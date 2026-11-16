@@ -14,11 +14,16 @@ import {
   setHidden,
   startVote,
   submitBallot,
+  touch,
   viewFor,
 } from './rooms.ts';
-import type { ParticipantId, Room, RoomStore, Transition, Viewer } from './rooms.ts';
+import type { Lifetime, ParticipantId, Room, RoomStore, Transition, Viewer } from './rooms.ts';
+import type { AttemptLimiter } from './limiter.ts';
 
 const PING_INTERVAL_MS = 25_000;
+
+// Sent after the `room_expired` error, so a client can tell an expired room from any other close. 4000-4999 is the private range.
+export const ROOM_EXPIRED_CLOSE_CODE = 4001;
 
 type Binding =
   | { readonly kind: 'unbound' }
@@ -29,6 +34,7 @@ type Binding =
 interface Conn {
   binding: Binding;
   alive: boolean;
+  readonly address: string;
 }
 
 const ERROR_MESSAGES: Record<ErrorReason, string> = {
@@ -50,13 +56,17 @@ const ERROR_MESSAGES: Record<ErrorReason, string> = {
   bad_ballot: '용지 내용이 올바르지 않아요.',
   already_submitted: '이미 제출했어요. 고칠 수 없어요.',
   bad_reveal: '지금은 그렇게 펼칠 수 없어요.',
+  rate_limited: '시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.',
+  room_expired: '오래 쓰지 않아 방이 닫혔어요.',
 };
 
 type BindingMsg = Extract<ClientMsg, { t: 'createRoom' | 'resumeHost' | 'join' | 'watch' }>;
 type CommandMsg = Exclude<ClientMsg, BindingMsg>;
 
 export interface Hub {
-  handleConnection(ws: WebSocket): void;
+  handleConnection(ws: WebSocket, address: string): void;
+  // Removes the rooms idle past the TTL and closes every socket bound to them.
+  sweep(): void;
   close(): void;
 }
 
@@ -76,26 +86,46 @@ function viewerOf(binding: Exclude<Binding, { kind: 'unbound' }>): Viewer {
   }
 }
 
-export function createHub(store: RoomStore): Hub {
+export function createHub(store: RoomStore, limiter: AttemptLimiter): Hub {
   const conns = new Map<WebSocket, Conn>();
+
+  const lifetime = (): Lifetime => ({ now: store.deps.now(), ttlMs: store.ttlMs });
 
   function send(ws: WebSocket, msg: ServerMsg): void {
     if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
   }
 
-  function sendError(ws: WebSocket, reason: ErrorReason): void {
-    send(ws, { t: 'error', reason, message: ERROR_MESSAGES[reason] });
+  function sendError(ws: WebSocket, reason: ErrorReason, message = ERROR_MESSAGES[reason]): void {
+    send(ws, { t: 'error', reason, message });
   }
 
-  function broadcast(code: string, except?: WebSocket): void {
+  // A wrong room code or token counts against the client's address (D-40). Nothing else does.
+  function sendGuessError(ws: WebSocket, conn: Conn, reason: ErrorReason): void {
+    limiter.recordFailure(conn.address);
+    sendError(ws, reason);
+  }
+
+  // Asked before any room lookup, so a locked client learns nothing about which rooms exist.
+  function isLocked(ws: WebSocket, conn: Conn): boolean {
+    const retryAfterMs = limiter.retryAfterMs(conn.address);
+    if (retryAfterMs === 0) return false;
+    const seconds = Math.ceil(retryAfterMs / 1000);
+    sendError(ws, 'rate_limited', `시도가 너무 많아요. ${seconds}초 뒤에 다시 해 주세요.`);
+    return true;
+  }
+
+  function broadcast(code: string, except?: WebSocket, only?: 'host'): void {
     const room = store.get(code);
     if (!room) return;
     for (const [ws, conn] of conns) {
       const { binding } = conn;
       if (ws === except || binding.kind === 'unbound' || binding.code !== code) continue;
-      send(ws, { t: 'view', view: viewFor(room, viewerOf(binding)) });
+      if (only && binding.kind !== only) continue;
+      send(ws, { t: 'view', view: viewFor(room, viewerOf(binding), lifetime()) });
     }
   }
+
+  const touchRoom = (code: string): Room => store.update(code, (room) => touch(room, store.deps.now()));
 
   function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
     switch (msg.t) {
@@ -111,36 +141,42 @@ export function createHub(store: RoomStore): Hub {
 
   function bind(ws: WebSocket, conn: Conn, msg: BindingMsg): void {
     if (conn.binding.kind !== 'unbound') return sendError(ws, 'already_bound');
+    if (msg.t !== 'createRoom' && isLocked(ws, conn)) return;
 
     switch (msg.t) {
       case 'createRoom': {
         const room = store.create();
         if (!room) return sendError(ws, 'room_full');
         conn.binding = { kind: 'host', code: room.code };
-        send(ws, { t: 'hosted', hostToken: room.hostToken, view: viewFor(room, { kind: 'host' }) });
+        send(ws, { t: 'hosted', hostToken: room.hostToken, view: viewFor(room, { kind: 'host' }, lifetime()) });
         return;
       }
       case 'resumeHost': {
-        const room = store.get(msg.code);
-        if (!room) return sendError(ws, 'room_not_found');
-        if (!isHostToken(room, msg.hostToken)) return sendError(ws, 'bad_host_token');
+        const found = store.get(msg.code);
+        if (!found) return sendGuessError(ws, conn, 'room_not_found');
+        if (!isHostToken(found, msg.hostToken)) return sendGuessError(ws, conn, 'bad_host_token');
+        const room = touchRoom(found.code);
         conn.binding = { kind: 'host', code: room.code };
-        send(ws, { t: 'hosted', hostToken: room.hostToken, view: viewFor(room, { kind: 'host' }) });
+        send(ws, { t: 'hosted', hostToken: room.hostToken, view: viewFor(room, { kind: 'host' }, lifetime()) });
         return;
       }
       case 'watch': {
         const room = store.get(msg.code);
-        if (!room) return sendError(ws, 'room_not_found');
-        if (!isDisplayToken(room, msg.displayToken)) return sendError(ws, 'bad_display_token');
+        if (!room) return sendGuessError(ws, conn, 'room_not_found');
+        if (!isDisplayToken(room, msg.displayToken)) return sendGuessError(ws, conn, 'bad_display_token');
         conn.binding = { kind: 'display', code: room.code };
         send(ws, { t: 'watching', view: viewFor(room, { kind: 'display' }) });
         return;
       }
       case 'join': {
         const room = store.get(msg.code);
-        if (!room) return sendError(ws, 'room_not_found');
+        if (!room) return sendGuessError(ws, conn, 'room_not_found');
         const result = join(store.deps, room, { nickname: msg.nickname, participantToken: msg.participantToken });
-        if (!result.ok) return sendError(ws, result.reason);
+        if (!result.ok) {
+          return result.reason === 'bad_participant_token'
+            ? sendGuessError(ws, conn, result.reason)
+            : sendError(ws, result.reason);
+        }
 
         const { participant } = result;
         const updated = store.update(room.code, () => result.room);
@@ -169,7 +205,11 @@ export function createHub(store: RoomStore): Hub {
     }
 
     if (binding.kind !== 'host') return sendError(ws, 'not_host');
+    // Any command from the host counts as activity, even one that is then refused.
+    touchRoom(binding.code);
     switch (msg.t) {
+      case 'keepAlive':
+        return broadcast(binding.code, undefined, 'host');
       case 'startVote':
         return apply(ws, binding.code, (room) => startVote(store.deps, room, msg.draft));
       case 'closeVote':
@@ -211,8 +251,19 @@ export function createHub(store: RoomStore): Hub {
     if (conn?.binding.kind !== 'participant') return;
     const { code, id } = conn.binding;
     if (!store.get(code)) return;
-    store.update(code, (room) => setConnected(room, id, false, store.deps.now()));
+    store.update(code, (room) => setConnected(room, id, false));
     broadcast(code);
+  }
+
+  // Unbinding first keeps a socket that lingers until its close handshake finishes from acting on a new room with the same code.
+  function expire(code: string): void {
+    for (const [ws, conn] of conns) {
+      const { binding } = conn;
+      if (binding.kind === 'unbound' || binding.code !== code) continue;
+      conn.binding = { kind: 'unbound' };
+      sendError(ws, 'room_expired');
+      ws.close(ROOM_EXPIRED_CLOSE_CODE, 'room_expired');
+    }
   }
 
   const heartbeat = setInterval(() => {
@@ -228,8 +279,8 @@ export function createHub(store: RoomStore): Hub {
   heartbeat.unref();
 
   return {
-    handleConnection(ws) {
-      const conn: Conn = { binding: { kind: 'unbound' }, alive: true };
+    handleConnection(ws, address) {
+      const conn: Conn = { binding: { kind: 'unbound' }, alive: true, address };
       conns.set(ws, conn);
 
       ws.on('pong', () => {
@@ -251,6 +302,10 @@ export function createHub(store: RoomStore): Hub {
       ws.on('close', () => onClose(ws));
       // ws emits 'error' before 'close' (e.g. an oversize frame). Without a listener it would crash the process.
       ws.on('error', () => {});
+    },
+
+    sweep() {
+      for (const { code } of store.sweep(store.deps.now())) expire(code);
     },
 
     close() {

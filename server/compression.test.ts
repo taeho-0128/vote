@@ -79,7 +79,9 @@ describe('compressed frames', () => {
     await squeezed.expect('view');
     const wire = { plain: socketOf(boss).bytesRead - before.plain, packed: socketOf(squeezed).bytesRead - before.packed };
 
-    expect(squeezed.raw.at(-1)).toBe(boss.raw.at(-1));
+    // The two frames are built a moment apart, so the countdown may differ by a few milliseconds.
+    const withoutCountdown = (frame: string) => ({ ...JSON.parse(frame), view: { ...JSON.parse(frame).view, expiresInMs: 0 } });
+    expect(withoutCountdown(squeezed.raw.at(-1)!)).toEqual(withoutCountdown(boss.raw.at(-1)!));
     expect(JSON.parse(squeezed.raw.at(-1)!).view.stage.reveal.ballots[0].content.strokes).toEqual(strokes);
     expect(wire.plain).toBeGreaterThan(15_000);
     expect(wire.packed).toBeLessThan(wire.plain * 0.6);

@@ -8,7 +8,7 @@ import { MAX_PAYLOAD_BYTES, startServer } from './app.ts';
 import type { RunningServer } from './app.ts';
 import { ballotsOf, closeVote, dismissVote, startVote, submitBallot, viewFor } from './rooms.ts';
 import type { Room, Transition } from './rooms.ts';
-import { TestClient, fakeDeps, roomWith } from './testkit.ts';
+import { LIFETIME, TestClient, fakeDeps, roomWith } from './testkit.ts';
 
 type Point = readonly [number, number];
 
@@ -73,7 +73,7 @@ describe('ink ballots in the domain', () => {
   ])('refuses %s with bad_ballot and records nothing', (_, draft, content) => {
     const { deps, voting, voteId, ids } = setup(draft);
     expect(submitBallot(deps, voting, ids[0]!, voteId, content)).toEqual({ ok: false, reason: 'bad_ballot' });
-    expect(viewFor(voting, { kind: 'host' }).stage).toMatchObject({ submittedCount: 0 });
+    expect(viewFor(voting, { kind: 'host' }, LIFETIME).stage).toMatchObject({ submittedCount: 0 });
   });
 
   it('stores a text ballot and an ink ballot from two participants of one vote', () => {
@@ -106,7 +106,7 @@ describe('ink ballots in the domain', () => {
     const lobbyAgain = must(dismissVote(deps, closed, voteId));
 
     for (const room of [lobby, voting, submitted, closed, lobbyAgain]) {
-      for (const view of [viewFor(room, { kind: 'host' }), ...ids.map((id) => viewFor(room, { kind: 'participant', id }))]) {
+      for (const view of [viewFor(room, { kind: 'host' }, LIFETIME), ...ids.map((id) => viewFor(room, { kind: 'participant', id }))]) {
         expect(viewSchema.safeParse(view).success).toBe(true);
         const wire = JSON.stringify(view);
         const hostSeesBallots = view.role === 'host' && room === closed;

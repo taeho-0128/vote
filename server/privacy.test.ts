@@ -5,7 +5,7 @@ import type { DisplayView, HostView, ParticipantView, View } from '../shared/pro
 import type { BallotContent, Paper, VoteDraft } from '../shared/vote.ts';
 import { dismissVote, revealMode, revealMove, setHidden, viewFor } from './rooms.ts';
 import type { Room } from './rooms.ts';
-import { NICKNAMES, closedRoom, fakeDeps, must } from './testkit.ts';
+import { LIFETIME, NICKNAMES, closedRoom, fakeDeps, must } from './testkit.ts';
 
 const stroke = (seed: number): InkStroke[] => [
   { w: 'thin', pts: [100 + seed, 200 + seed, 300 + seed, 400 + seed] },
@@ -149,11 +149,11 @@ describe.each(cases)('privacy sweep, $name vote', (scenario) => {
   });
 
   it.each(rooms.map((r) => [r.label, r] as const))('host view at %s', (_, { room }) => {
-    const view = viewFor(room, { kind: 'host' });
+    const view = viewFor(room, { kind: 'host' }, LIFETIME);
     const wire = JSON.stringify(view);
     expect(viewSchema.safeParse(view).success).toBe(true);
 
-    expect(keys(view)).toEqual(['code', 'displayToken', 'participants', 'role', 'stage']);
+    expect(keys(view)).toEqual(['code', 'displayToken', 'expiresInMs', 'participants', 'role', 'stage']);
     expect(view.displayToken).toBe(room.displayToken);
     for (const token of secretTokens) expect(wire).not.toContain(token);
 
@@ -166,7 +166,7 @@ describe('the views are typed apart', () => {
   it('has one view type per role, so a display view cannot be mistaken for a host view', () => {
     const { closed } = closedRoom(fakeDeps(), { title: 't', paper: { kind: 'freeform' }, anonymity: 'anonymous' }, [text('a')]);
     const views: View[] = [
-      viewFor(closed, { kind: 'host' }) satisfies HostView,
+      viewFor(closed, { kind: 'host' }, LIFETIME) satisfies HostView,
       viewFor(closed, { kind: 'participant', id: [...closed.participants.keys()][0]! }) satisfies ParticipantView,
       viewFor(closed, { kind: 'display' }) satisfies DisplayView,
     ];

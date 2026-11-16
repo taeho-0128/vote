@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { viewSchema } from '../shared/protocol.ts';
 import { createRoom, isHostToken, join, RoomStore, setConnected, viewFor } from './rooms.ts';
-import { fakeDeps, roomWith } from './testkit.ts';
+import { LIFETIME, fakeDeps, roomWith } from './testkit.ts';
 
 describe('createRoom', () => {
   it('creates an empty lobby with the picked code', () => {
     const room = createRoom(fakeDeps(['0042']), new Set())!;
     expect(room.code).toBe('0042');
     expect(room.stage).toEqual({ kind: 'lobby' });
-    expect(viewFor(room, { kind: 'host' }).participants).toEqual([]);
+    expect(viewFor(room, { kind: 'host' }, LIFETIME).participants).toEqual([]);
   });
 
   it('never reuses a code that is taken, even when the random source keeps colliding', () => {
@@ -58,7 +58,7 @@ describe('join', () => {
     const room = roomWith(deps);
     const result = join(deps, room, { nickname: '  민지  ' });
     if (!result.ok) throw new Error(result.reason);
-    expect(viewFor(result.room, { kind: 'host' }).participants).toEqual([
+    expect(viewFor(result.room, { kind: 'host' }, LIFETIME).participants).toEqual([
       { id: result.participant.id, nickname: '민지', connected: true, submitted: false },
     ]);
   });
@@ -80,7 +80,7 @@ describe('join', () => {
     const deps = fakeDeps();
     const room = roomWith(deps, 'Alice');
     const id = [...room.participants.keys()][0]!;
-    const away = setConnected(room, id, false, deps.now());
+    const away = setConnected(room, id, false);
     expect(join(deps, away, { nickname: 'alice' })).toEqual({ ok: false, reason: 'nickname_taken' });
   });
 
@@ -89,7 +89,7 @@ describe('join', () => {
       const deps = fakeDeps();
       const room = roomWith(deps, 'Alice', 'Bob');
       const alice = [...room.participants.values()][0]!;
-      const away = setConnected(room, alice.id, false, deps.now());
+      const away = setConnected(room, alice.id, false);
 
       const result = join(deps, away, { nickname: 'ignored', participantToken: alice.token });
       expect(result.ok).toBe(true);
@@ -98,7 +98,7 @@ describe('join', () => {
       expect(result.participant.nickname).toBe('Alice');
       expect(result.participant.connected).toBe(true);
       expect(result.room.participants.size).toBe(2);
-      expect(viewFor(result.room, { kind: 'host' }).participants.map((p) => p.nickname)).toEqual(['Alice', 'Bob']);
+      expect(viewFor(result.room, { kind: 'host' }, LIFETIME).participants.map((p) => p.nickname)).toEqual(['Alice', 'Bob']);
     });
 
     it('rejects a token that matches nobody', () => {
@@ -113,25 +113,24 @@ describe('join', () => {
 });
 
 describe('setConnected', () => {
-  it('flips the flag for that participant only and records activity', () => {
+  it('flips the flag for that participant only, and a disconnect is not activity', () => {
     const deps = fakeDeps();
     const room = roomWith(deps, 'Alice', 'Bob');
     const [alice, bob] = [...room.participants.values()];
     deps.tick(500);
-    const next = setConnected(room, alice!.id, false, deps.now());
-    expect(viewFor(next, { kind: 'host' }).participants.map((p) => [p.nickname, p.connected])).toEqual([
+    const next = setConnected(room, alice!.id, false);
+    expect(viewFor(next, { kind: 'host' }, LIFETIME).participants.map((p) => [p.nickname, p.connected])).toEqual([
       ['Alice', false],
       ['Bob', true],
     ]);
-    expect(next.lastActiveAt).toBe(deps.now());
-    expect(next.lastActiveAt).toBeGreaterThan(room.lastActiveAt);
+    expect(next.lastActiveAt).toBe(room.lastActiveAt);
     expect(bob!.connected).toBe(true);
   });
 
   it('ignores an unknown participant', () => {
     const deps = fakeDeps();
     const room = roomWith(deps, 'Alice');
-    expect(setConnected(room, 'nobody', false, deps.now())).toBe(room);
+    expect(setConnected(room, 'nobody', false)).toBe(room);
   });
 });
 
@@ -150,7 +149,7 @@ describe('viewFor', () => {
     const deps = fakeDeps();
     const room = roomWith(deps, 'Alice', 'Bob');
     const alice = [...room.participants.values()][0]!;
-    const view = viewFor(setConnected(room, alice.id, false, deps.now()), { kind: 'host' });
+    const view = viewFor(setConnected(room, alice.id, false), { kind: 'host' }, LIFETIME);
     expect(view.role).toBe('host');
     expect(view.code).toBe(room.code);
     expect(view.participants).toEqual([
@@ -174,7 +173,7 @@ describe('viewFor', () => {
     const room = roomWith(deps, 'Alice', 'Bob');
     const tokens = [room.hostToken, ...[...room.participants.values()].map((p) => p.token)];
     const views = [
-      viewFor(room, { kind: 'host' }),
+      viewFor(room, { kind: 'host' }, LIFETIME),
       ...[...room.participants.keys()].map((id) => viewFor(room, { kind: 'participant', id })),
     ];
     for (const view of views) {

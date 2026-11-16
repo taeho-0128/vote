@@ -4,7 +4,7 @@ import type { ErrorReason } from '../shared/protocol.ts';
 import type { BallotContent, VoteDraft } from '../shared/vote.ts';
 import { ballotsOf, closeVote, dismissVote, join, setConnected, startVote, submitBallot, viewFor } from './rooms.ts';
 import type { Deps, ParticipantId, Room, Transition } from './rooms.ts';
-import { fakeDeps, roomWith } from './testkit.ts';
+import { LIFETIME, fakeDeps, roomWith } from './testkit.ts';
 
 const freeform: VoteDraft = { title: '이번 달 MVP는?', paper: { kind: 'freeform' }, anonymity: 'anonymous' };
 const lunch: VoteDraft = { title: '점심', paper: { kind: 'choice', options: ['김밥', '라면', '비빔밥'] }, anonymity: 'named' };
@@ -21,7 +21,7 @@ const voteIdOf = (room: Room): string => {
   if (room.stage.kind === 'lobby') throw new Error('no vote');
   return room.stage.vote.id;
 };
-const hostStage = (room: Room) => viewFor(room, { kind: 'host' }).stage;
+const hostStage = (room: Room) => viewFor(room, { kind: 'host' }, LIFETIME).stage;
 
 function setup(draft: VoteDraft = freeform, ...nicknames: string[]) {
   const deps = fakeDeps();
@@ -172,12 +172,12 @@ describe('submitBallot', () => {
     const { deps, voting, voteId, ids } = setup(freeform, 'Alice', 'Bob');
     const alice = voting.participants.get(ids[0]!)!;
     const submitted = must(submitBallot(deps, voting, alice.id, voteId, text('hi')));
-    const away = setConnected(submitted, alice.id, false, deps.now());
+    const away = setConnected(submitted, alice.id, false);
 
     const back = join(deps, away, { nickname: 'ignored', participantToken: alice.token });
     if (!back.ok) throw new Error(back.reason);
     expect(viewFor(back.room, { kind: 'participant', id: alice.id }).stage).toMatchObject({ submitted: true });
-    expect(viewFor(back.room, { kind: 'host' }).participants.map((p) => [p.nickname, p.submitted])).toEqual([
+    expect(viewFor(back.room, { kind: 'host' }, LIFETIME).participants.map((p) => [p.nickname, p.submitted])).toEqual([
       ['Alice', true],
       ['Bob', false],
     ]);
@@ -188,7 +188,7 @@ describe('views', () => {
   it('shows the host the submitted count and a per-participant flag while voting', () => {
     const { deps, voting, voteId, ids } = setup();
     const room = must(submitBallot(deps, voting, ids[1]!, voteId, text('hi')));
-    const view = viewFor(room, { kind: 'host' });
+    const view = viewFor(room, { kind: 'host' }, LIFETIME);
     expect(view.stage).toMatchObject({ kind: 'voting', submittedCount: 1 });
     expect(view.participants.map((p) => [p.nickname, p.submitted])).toEqual([
       ['Alice', false],
@@ -201,7 +201,7 @@ describe('views', () => {
     const { deps, voting, voteId, ids } = setup();
     const submitted = must(submitBallot(deps, voting, ids[0]!, voteId, text('hi')));
     const closed = must(closeVote(deps, submitted, voteId));
-    const view = viewFor(closed, { kind: 'host' });
+    const view = viewFor(closed, { kind: 'host' }, LIFETIME);
     expect(view.stage).toMatchObject({ kind: 'closed', ballotCount: 1 });
     expect(view.participants.map((p) => p.submitted)).toEqual([true, false, false]);
   });
@@ -210,7 +210,7 @@ describe('views', () => {
     const { deps, voting, voteId, ids } = setup();
     const closed = must(closeVote(deps, must(submitBallot(deps, voting, ids[0]!, voteId, text('hi'))), voteId));
     const lobby = must(dismissVote(deps, closed, voteId));
-    const view = viewFor(lobby, { kind: 'host' });
+    const view = viewFor(lobby, { kind: 'host' }, LIFETIME);
     expect(view.stage).toEqual({ kind: 'lobby' });
     expect(view.participants.every((p) => !p.submitted)).toBe(true);
   });
@@ -234,7 +234,7 @@ describe('views', () => {
     const closed = must(closeVote(deps, two, voteId));
 
     const countOf = (room: Room, viewer: { kind: 'host' } | { kind: 'participant'; id: ParticipantId }) => {
-      const { stage } = viewFor(room, viewer);
+      const { stage } = viewFor(room, viewer, LIFETIME);
       return 'submittedCount' in stage ? stage.submittedCount : 'ballotCount' in stage ? stage.ballotCount : undefined;
     };
     for (const [room, expected] of [[empty, 0], [two, 2], [closed, 2]] as const) {
@@ -314,7 +314,7 @@ describe('what a view may reveal', () => {
 
     const rooms = [lobby, open, submitted, closed, lobbyAgain, named, namedSubmitted, choiceOpen, choiceSubmitted];
     for (const room of rooms) {
-      for (const view of [viewFor(room, { kind: 'host' }), ...ids.map((id) => viewFor(room, { kind: 'participant', id }))]) {
+      for (const view of [viewFor(room, { kind: 'host' }, LIFETIME), ...ids.map((id) => viewFor(room, { kind: 'participant', id }))]) {
         expect(viewSchema.safeParse(view).success).toBe(true);
         if (view.role === 'participant') {
           expect(Object.keys(view).sort()).toEqual(['code', 'me', 'participants', 'role', 'stage']);
@@ -335,7 +335,7 @@ describe('what a view may reveal', () => {
 
   it('shows the same vote fields to host and participants, and no others', () => {
     const { voting, ids } = setup(lunch);
-    const host = viewFor(voting, { kind: 'host' }).stage;
+    const host = viewFor(voting, { kind: 'host' }, LIFETIME).stage;
     const guest = viewFor(voting, { kind: 'participant', id: ids[0]! }).stage;
     if (host.kind !== 'voting' || guest.kind !== 'voting') throw new Error('expected voting');
     expect(Object.keys(host.vote).sort()).toEqual(['anonymity', 'id', 'paper', 'title']);

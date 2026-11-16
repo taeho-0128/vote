@@ -1,10 +1,16 @@
-import { WebSocket } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import type { ClientOptions } from 'ws';
 import { serverMsgSchema } from '../shared/protocol.ts';
 import type { ErrorReason, ServerMsg, View } from '../shared/protocol.ts';
 import type { BallotContent, VoteDraft } from '../shared/vote.ts';
-import { closeVote, createRoom, join, startVote, submitBallot } from './rooms.ts';
-import type { Deps, ParticipantId, Room, Transition } from './rooms.ts';
+import { clientAddress } from './app.ts';
+import { createHub } from './hub.ts';
+import { AttemptLimiter } from './limiter.ts';
+import { ROOM_TTL_MS, RoomStore, closeVote, createRoom, join, startVote, submitBallot } from './rooms.ts';
+import type { Deps, Lifetime, ParticipantId, Room, Transition } from './rooms.ts';
+
+// For tests that read a host view and do not care about the time left.
+export const LIFETIME: Lifetime = { now: 0, ttlMs: ROOM_TTL_MS };
 
 type MsgOf<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>;
 
@@ -132,4 +138,36 @@ export function roomWith(deps: Deps, ...nicknames: string[]): Room {
     room = result.room;
   }
   return room;
+}
+
+export interface TestHub {
+  readonly port: number;
+  readonly deps: ReturnType<typeof fakeDeps>;
+  readonly store: RoomStore;
+  // Runs one sweep now, as the server's interval would.
+  sweep(): void;
+  close(): Promise<void>;
+}
+
+// A hub on a real socket whose clock is the fake one, so a test moves time with `deps.tick` and calls `sweep` itself.
+// X-Forwarded-For is trusted here, which lets one test machine pose as several client addresses.
+export async function startTestHub({ codes, ttlMs }: { codes?: string[]; ttlMs?: number } = {}): Promise<TestHub> {
+  const deps = fakeDeps(codes);
+  const store = new RoomStore(deps, ttlMs);
+  const hub = createHub(store, new AttemptLimiter({ now: deps.now }));
+  const wss = new WebSocketServer({ port: 0, host: '127.0.0.1' });
+  wss.on('connection', (ws, req) => hub.handleConnection(ws, clientAddress(req, true)));
+  await new Promise<void>((resolve) => wss.once('listening', resolve));
+  const { port } = wss.address() as { port: number };
+  return {
+    port,
+    deps,
+    store,
+    sweep: () => hub.sweep(),
+    close: () =>
+      new Promise<void>((resolve) => {
+        hub.close();
+        wss.close(() => resolve());
+      }),
+  };
 }

@@ -14,7 +14,7 @@ import {
   viewFor,
 } from './rooms.ts';
 import type { Deps, Room } from './rooms.ts';
-import { closedRoom, fakeDeps, must, roomWith, voteIdOf } from './testkit.ts';
+import { LIFETIME, closedRoom, fakeDeps, must, roomWith, voteIdOf } from './testkit.ts';
 
 const freeform: VoteDraft = { title: '이번 달 MVP는?', paper: { kind: 'freeform' }, anonymity: 'anonymous' };
 const lunch: VoteDraft = { title: '점심', paper: { kind: 'choice', options: ['김밥', '라면', '비빔밥'] }, anonymity: 'named' };
@@ -22,7 +22,7 @@ const text = (t: string): BallotContent => ({ kind: 'text', text: t });
 const pick = (optionIndex: number): BallotContent => ({ kind: 'choice', optionIndex });
 
 const hostReveal = (room: Room) => {
-  const { stage } = viewFor(room, { kind: 'host' });
+  const { stage } = viewFor(room, { kind: 'host' }, LIFETIME);
   if (stage.kind !== 'closed') throw new Error('expected a closed vote');
   return stage.reveal;
 };
@@ -331,7 +331,7 @@ describe('the display token', () => {
     const deps = fakeDeps();
     const { lobby, voting, closed, voteId } = closedRoom(deps, freeform, [text('a')]);
     const dismissed = must(dismissVote(deps, closed, voteId));
-    const tokens = [lobby, voting, closed, dismissed].map((room) => viewFor(room, { kind: 'host' }).displayToken);
+    const tokens = [lobby, voting, closed, dismissed].map((room) => viewFor(room, { kind: 'host' }, LIFETIME).displayToken);
     expect(new Set(tokens).size).toBe(1);
     expect(tokens[0]).not.toBe(lobby.hostToken);
   });

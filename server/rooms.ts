@@ -68,6 +68,12 @@ export interface Room {
   readonly lastActiveAt: number;
 }
 
+// What a host view needs to say how long the room has left: the moment the view is built and the idle limit.
+export interface Lifetime {
+  readonly now: number;
+  readonly ttlMs: number;
+}
+
 export type Viewer =
   | { readonly kind: 'host' }
   | { readonly kind: 'participant'; readonly id: ParticipantId }
@@ -86,6 +92,8 @@ export type JoinRequest = { readonly nickname: string; readonly participantToken
 export type JoinResult =
   | { readonly ok: true; readonly room: Room; readonly participant: Participant }
   | { readonly ok: false; readonly reason: 'nickname_invalid' | 'nickname_taken' | 'bad_participant_token' };
+
+export const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 
 const CODE_SPACE = 10_000;
 const RANDOM_ATTEMPTS = 16;
@@ -160,11 +168,16 @@ export function join(deps: Deps, room: Room, req: JoinRequest): JoinResult {
   return { ok: true, room: withParticipant(room, participant, deps.now()), participant };
 }
 
-export function setConnected(room: Room, id: ParticipantId, connected: boolean, now: number): Room {
+// Connecting and disconnecting is not activity (D-40), so lastActiveAt stays where it was.
+export function setConnected(room: Room, id: ParticipantId, connected: boolean): Room {
   const existing = room.participants.get(id);
   if (!existing) return room;
-  return withParticipant(room, { ...existing, connected }, now);
+  return { ...room, participants: new Map(room.participants).set(id, { ...existing, connected }) };
 }
+
+export const touch = (room: Room, now: number): Room => ({ ...room, lastActiveAt: now });
+
+export const expiresInMs = (room: Room, { now, ttlMs }: Lifetime): number => Math.max(0, room.lastActiveAt + ttlMs - now);
 
 export function isHostToken(room: Room, token: string): boolean {
   return safeEqual(room.hostToken, token);
@@ -372,18 +385,20 @@ function displayStage(room: Room): DisplayStage {
   }
 }
 
-export function viewFor(room: Room, viewer: { readonly kind: 'host' }): HostView;
+export function viewFor(room: Room, viewer: { readonly kind: 'host' }, lifetime: Lifetime): HostView;
 export function viewFor(room: Room, viewer: { readonly kind: 'participant'; readonly id: ParticipantId }): ParticipantView;
 export function viewFor(room: Room, viewer: { readonly kind: 'display' }): DisplayView;
-export function viewFor(room: Room, viewer: Viewer): HostView | ParticipantView | DisplayView;
-export function viewFor(room: Room, viewer: Viewer): HostView | ParticipantView | DisplayView {
+export function viewFor(room: Room, viewer: Viewer, lifetime: Lifetime): HostView | ParticipantView | DisplayView;
+export function viewFor(room: Room, viewer: Viewer, lifetime?: Lifetime): HostView | ParticipantView | DisplayView {
   const ballots = ballotsIn(room.stage);
   switch (viewer.kind) {
     case 'host':
+      if (!lifetime) throw new Error('a host view needs a lifetime');
       return {
         role: 'host',
         code: room.code,
         displayToken: room.displayToken,
+        expiresInMs: expiresInMs(room, lifetime),
         stage: hostStage(room),
         participants: summariesOf(room).map((p) => ({ ...p, submitted: ballots.has(p.id) })),
       };
@@ -406,7 +421,10 @@ export function viewFor(room: Room, viewer: Viewer): HostView | ParticipantView 
 export class RoomStore {
   readonly #rooms = new Map<string, Room>();
 
-  constructor(readonly deps: Deps) {}
+  constructor(
+    readonly deps: Deps,
+    readonly ttlMs: number = ROOM_TTL_MS,
+  ) {}
 
   create(): Room | null {
     const room = createRoom(this.deps, new Set(this.#rooms.keys()));
@@ -428,5 +446,12 @@ export class RoomStore {
 
   delete(code: string): void {
     this.#rooms.delete(code);
+  }
+
+  // Removes and returns the rooms idle for the whole TTL. A room is expired exactly when its host view would say 0 ms left.
+  sweep(now: number): Room[] {
+    const expired = [...this.#rooms.values()].filter((room) => expiresInMs(room, { now, ttlMs: this.ttlMs }) === 0);
+    for (const { code } of expired) this.#rooms.delete(code);
+    return expired;
   }
 }
