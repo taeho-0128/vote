@@ -46,6 +46,11 @@ describe('normalizeBallotContent', () => {
     expect(normalizeBallotContent({ kind: 'text', text: '가'.repeat(200) }, free)).not.toBeNull();
   });
 
+  it('limits typed text to twelve lines so it still fits on the paper', () => {
+    expect(normalizeBallotContent({ kind: 'text', text: Array.from({ length: 12 }, () => '가').join('\n') }, free)).not.toBeNull();
+    expect(normalizeBallotContent({ kind: 'text', text: Array.from({ length: 13 }, () => '가').join('\n') }, free)).toBeNull();
+  });
+
   it('rejects content that does not match the paper', () => {
     expect(normalizeBallotContent({ kind: 'choice', optionIndex: 0 }, free)).toBeNull();
     expect(normalizeBallotContent({ kind: 'text', text: 'x' }, pick)).toBeNull();

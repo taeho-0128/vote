@@ -21,10 +21,12 @@ export const hostStageSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('closed'), vote: votePublicSchema, ballotCount: z.number().int().nonnegative() }),
 ]);
 
+const count = z.number().int().nonnegative();
+
 export const participantStageSchema = z.discriminatedUnion('kind', [
   lobbyStage,
-  z.object({ kind: z.literal('voting'), vote: votePublicSchema, submitted: z.boolean() }),
-  z.object({ kind: z.literal('closed'), vote: votePublicSchema, submitted: z.boolean() }),
+  z.object({ kind: z.literal('voting'), vote: votePublicSchema, submitted: z.boolean(), submittedCount: count }),
+  z.object({ kind: z.literal('closed'), vote: votePublicSchema, submitted: z.boolean(), submittedCount: count }),
 ]);
 
 export const participantSummarySchema = z.object({

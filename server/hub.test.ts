@@ -287,8 +287,8 @@ describe('voting lifecycle', () => {
       role: 'host',
       stage: { kind: 'voting', submittedCount: 0, vote: { title: '이번 달 MVP는?', anonymity: 'anonymous', paper: { kind: 'freeform' } } },
     });
-    expect(aliceOpen).toMatchObject({ role: 'participant', stage: { kind: 'voting', submitted: false, vote: { id: voteId } } });
-    expect(bobOpen).toMatchObject({ stage: { kind: 'voting', submitted: false } });
+    expect(aliceOpen).toMatchObject({ role: 'participant', stage: { kind: 'voting', submitted: false, submittedCount: 0, vote: { id: voteId } } });
+    expect(bobOpen).toMatchObject({ stage: { kind: 'voting', submitted: false, submittedCount: 0 } });
 
     alice.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: '비밀문장-ALPHA' } });
     const [hostAfterAlice, aliceAfter, bobAfterAlice] = await views(host, alice, bob);
@@ -297,19 +297,21 @@ describe('voting lifecycle', () => {
       ['Alice', true],
       ['Bob', false],
     ]);
-    expect(aliceAfter).toMatchObject({ stage: { submitted: true } });
-    expect(bobAfterAlice).toMatchObject({ stage: { submitted: false } });
+    expect(aliceAfter).toMatchObject({ stage: { submitted: true, submittedCount: 1 } });
+    expect(bobAfterAlice).toMatchObject({ stage: { submitted: false, submittedCount: 1 } });
     expect(bobAfterAlice!.participants.every((p) => !('submitted' in p))).toBe(true);
 
     bob.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: '다른 문장' } });
-    const [hostAfterBob] = await views(host, alice, bob);
+    const [hostAfterBob, aliceAfterBob, bobAfter] = await views(host, alice, bob);
     expect(hostAfterBob).toMatchObject({ stage: { submittedCount: 2 } });
+    expect(aliceAfterBob).toMatchObject({ stage: { submitted: true, submittedCount: 2 } });
+    expect(bobAfter).toMatchObject({ stage: { submitted: true, submittedCount: 2 } });
     expect(hostAfterBob!.participants.every((p) => 'submitted' in p && p.submitted)).toBe(true);
 
     host.send({ t: 'closeVote', voteId });
     const [hostClosed, aliceClosed] = await views(host, alice, bob);
     expect(hostClosed).toMatchObject({ stage: { kind: 'closed', ballotCount: 2 } });
-    expect(aliceClosed).toMatchObject({ stage: { kind: 'closed', submitted: true } });
+    expect(aliceClosed).toMatchObject({ stage: { kind: 'closed', submitted: true, submittedCount: 2 } });
 
     const late = await joinRoom(code, 'Late');
     await views(host, alice, bob);
@@ -333,6 +335,42 @@ describe('voting lifecycle', () => {
         expect(raw).not.toContain('다른 문장');
       }
     }
+  });
+
+  it('shows a waiting participant the rising ballot count while their own submitted stays false', async () => {
+    const { host, guests } = await roomWithGuests('Alice', 'Bob', 'Cara');
+    const [alice, bob, cara] = guests.map((g) => g.client) as [TestClient, TestClient, TestClient];
+    const voteId = await openVote(host, guests);
+
+    alice.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: 'a' } });
+    const [, , bobSees1, caraSees1] = await views(host, alice, bob, cara);
+    expect(bobSees1).toMatchObject({ stage: { kind: 'voting', submitted: false, submittedCount: 1 } });
+    expect(caraSees1).toMatchObject({ stage: { kind: 'voting', submitted: false, submittedCount: 1 } });
+
+    cara.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: 'c' } });
+    const [, , bobSees2, caraSelf] = await views(host, alice, bob, cara);
+    expect(bobSees2).toMatchObject({ stage: { submitted: false, submittedCount: 2 } });
+    expect(caraSelf).toMatchObject({ stage: { submitted: true, submittedCount: 2 } });
+
+    host.send({ t: 'closeVote', voteId });
+    const [, , bobClosed] = await views(host, alice, bob, cara);
+    expect(bobClosed).toMatchObject({ stage: { kind: 'closed', submitted: false, submittedCount: 2 } });
+  });
+
+  it('shows a participant who joins mid-vote the current count', async () => {
+    const { host, code, guests } = await roomWithGuests('Alice');
+    const voteId = await openVote(host, guests);
+    guests[0]!.client.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: 'a' } });
+    await views(host, guests[0]!.client);
+
+    const late = await joinRoom(code, 'Late');
+    expect(late.joined.view.stage).toMatchObject({ kind: 'voting', submitted: false, submittedCount: 1 });
+
+    await views(host, guests[0]!.client);
+    guests[0]!.client.close();
+    await host.expect('view');
+    const back = await joinRoom(code, 'ignored', guests[0]!.joined.participantToken);
+    expect(back.joined.view.stage).toMatchObject({ submitted: true, submittedCount: 1 });
   });
 
   it('answers a multiple-choice submit and lets a late joiner vote', async () => {

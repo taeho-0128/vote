@@ -225,7 +225,7 @@ function hostStage(stage: Stage): HostStage {
 
 function participantStage(stage: Stage, submitted: boolean): ParticipantStage {
   if (stage.kind === 'lobby') return { kind: 'lobby' };
-  return { kind: stage.kind, vote: publicVote(stage.vote), submitted };
+  return { kind: stage.kind, vote: publicVote(stage.vote), submitted, submittedCount: stage.ballots.size };
 }
 
 export function viewFor(room: Room, viewer: { readonly kind: 'host' }): HostView;

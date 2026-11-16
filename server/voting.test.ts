@@ -222,9 +222,32 @@ describe('views', () => {
     const vote = { id: voteId, title: '이번 달 MVP는?', anonymity: 'anonymous', paper: { kind: 'freeform' } };
 
     for (const [room, kind] of [[submitted, 'voting'], [closed, 'closed']] as const) {
-      expect(viewFor(room, { kind: 'participant', id: ids[0]! }).stage).toEqual({ kind, vote, submitted: true });
-      expect(viewFor(room, { kind: 'participant', id: ids[1]! }).stage).toEqual({ kind, vote, submitted: false });
+      expect(viewFor(room, { kind: 'participant', id: ids[0]! }).stage).toEqual({ kind, vote, submitted: true, submittedCount: 1 });
+      expect(viewFor(room, { kind: 'participant', id: ids[1]! }).stage).toEqual({ kind, vote, submitted: false, submittedCount: 1 });
     }
+  });
+
+  it('gives every participant the same ballot count as the host, while voting and after closing', () => {
+    const { deps, voting, voteId, ids } = setup();
+    const empty = voting;
+    const two = must(submitBallot(deps, must(submitBallot(deps, voting, ids[0]!, voteId, text('a'))), ids[2]!, voteId, text('b')));
+    const closed = must(closeVote(deps, two, voteId));
+
+    const countOf = (room: Room, viewer: { kind: 'host' } | { kind: 'participant'; id: ParticipantId }) => {
+      const { stage } = viewFor(room, viewer);
+      return stage.kind === 'lobby' ? undefined : 'submittedCount' in stage ? stage.submittedCount : stage.ballotCount;
+    };
+    for (const [room, expected] of [[empty, 0], [two, 2], [closed, 2]] as const) {
+      for (const id of ids) expect(countOf(room, { kind: 'participant', id })).toBe(expected);
+      expect(countOf(room, { kind: 'host' })).toBe(expected);
+    }
+  });
+
+  it('counts only the current vote, so the next vote starts at zero', () => {
+    const { deps, voting, voteId, ids } = setup();
+    const closed = must(closeVote(deps, must(submitBallot(deps, voting, ids[0]!, voteId, text('x'))), voteId));
+    const next = must(startVote(deps, must(dismissVote(deps, closed, voteId)), freeform));
+    expect(viewFor(next, { kind: 'participant', id: ids[1]! }).stage).toMatchObject({ kind: 'voting', submitted: false, submittedCount: 0 });
   });
 
   it('never puts a submitted flag in the roster a participant sees', () => {
@@ -293,6 +316,13 @@ describe('what a view may reveal', () => {
     for (const room of rooms) {
       for (const view of [viewFor(room, { kind: 'host' }), ...ids.map((id) => viewFor(room, { kind: 'participant', id }))]) {
         expect(viewSchema.safeParse(view).success).toBe(true);
+        if (view.role === 'participant') {
+          expect(Object.keys(view).sort()).toEqual(['code', 'me', 'participants', 'role', 'stage']);
+          expect(Object.keys(view.stage).sort()).toEqual(
+            view.stage.kind === 'lobby' ? ['kind'] : ['kind', 'submitted', 'submittedCount', 'vote'],
+          );
+          expect(Object.keys(view.me).sort()).toEqual(['id', 'nickname']);
+        }
         const wire = JSON.stringify(view);
         expect(wire).not.toContain(secret);
         expect(wire).not.toContain('optionIndex');

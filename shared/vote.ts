@@ -7,6 +7,7 @@ export const OPTIONS_MIN = 2;
 export const OPTIONS_MAX = 8;
 export const OPTION_MAX = 30;
 export const TEXT_MAX = 200;
+export const TEXT_MAX_LINES = 12;
 
 export const anonymitySchema = z.enum(['anonymous', 'named']);
 
@@ -67,6 +68,7 @@ export function normalizeBallotContent(content: BallotContent, paper: Paper): Ba
       .replace(/\p{Cc}/gu, (c) => (c === '\n' ? c : ''))
       .trim();
     if (length(text) < 1 || length(text) > TEXT_MAX) return null;
+    if (text.split('\n').length > TEXT_MAX_LINES) return null;
     return { kind: 'text', text };
   }
   if (content.kind !== 'choice') return null;
