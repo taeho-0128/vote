@@ -120,6 +120,7 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('revealMode'), voteId: z.string(), mode: revealModeSchema }),
   z.object({ t: z.literal('setHidden'), voteId: z.string(), hidden: z.boolean() }),
   z.object({ t: z.literal('keepAlive') }),
+  z.object({ t: z.literal('ping') }),
 ]);
 
 export const errorReasonSchema = z.enum([
@@ -150,6 +151,7 @@ export const serverMsgSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('joined'), participantToken: tokenSchema, view: participantViewSchema }),
   z.object({ t: z.literal('watching'), view: displayViewSchema }),
   z.object({ t: z.literal('view'), view: viewSchema }),
+  z.object({ t: z.literal('pong') }),
   z.object({ t: z.literal('error'), reason: errorReasonSchema, message: z.string() }),
 ]);
 
