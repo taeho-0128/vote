@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import { tokenSchema } from '../../shared/protocol.ts';
+import { ballotDraftSchema } from './ballot.ts';
+import type { BallotDraft } from './ballot.ts';
 
 const participantRecordSchema = z.object({ token: tokenSchema, nickname: z.string() });
 export type ParticipantRecord = z.infer<typeof participantRecordSchema>;
 
 const hostKey = (code: string) => `hanpyo:host:${code}`;
 const participantKey = (code: string) => `hanpyo:participant:${code}`;
+const ballotKey = (voteId: string) => `hanpyo:ballot:${voteId}`;
 const LAST_NICKNAME_KEY = 'hanpyo:nickname';
 
 // Storage can be blocked or throw (private mode, disabled site data). Every call degrades to "nothing stored".
@@ -58,3 +61,18 @@ export const clearParticipant = (code: string): void => remove(participantKey(co
 
 export const getLastNickname = (): string => read(LAST_NICKNAME_KEY) ?? '';
 export const setLastNickname = (nickname: string): void => write(LAST_NICKNAME_KEY, nickname);
+
+export function getBallotDraft(voteId: string): BallotDraft | null {
+  const raw = read(ballotKey(voteId));
+  if (raw === null) return null;
+  try {
+    const parsed = ballotDraftSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
+
+export const setBallotDraft = (voteId: string, draft: BallotDraft): void =>
+  write(ballotKey(voteId), JSON.stringify(draft));
+export const clearBallotDraft = (voteId: string): void => remove(ballotKey(voteId));

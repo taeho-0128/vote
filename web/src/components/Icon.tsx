@@ -13,6 +13,21 @@ const PATHS = {
     </>
   ),
   check: <path d="M5 12.5l4.5 4.5L19 7" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  x: <path d="M6 6l12 12M18 6L6 18" />,
+  pen: (
+    <>
+      <path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19z" />
+      <path d="M14.5 6.5l3 3" />
+    </>
+  ),
+  eyeoff: (
+    <>
+      <path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z" />
+      <circle cx="12" cy="12" r="2.6" />
+      <path d="M4 4l16 16" />
+    </>
+  ),
 } as const;
 
 export function Icon({ name, size = 18 }: { name: keyof typeof PATHS; size?: number }) {

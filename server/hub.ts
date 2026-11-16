@@ -2,8 +2,8 @@ import { WebSocket } from 'ws';
 import type { RawData } from 'ws';
 import { clientMsgSchema } from '../shared/protocol.ts';
 import type { ClientMsg, ErrorReason, ServerMsg } from '../shared/protocol.ts';
-import { isHostToken, join, setConnected, viewFor } from './rooms.ts';
-import type { ParticipantId, RoomStore, Viewer } from './rooms.ts';
+import { closeVote, dismissVote, isHostToken, join, setConnected, startVote, submitBallot, viewFor } from './rooms.ts';
+import type { ParticipantId, Room, RoomStore, Transition, Viewer } from './rooms.ts';
 
 const PING_INTERVAL_MS = 25_000;
 
@@ -27,7 +27,17 @@ const ERROR_MESSAGES: Record<ErrorReason, string> = {
   nickname_invalid: '닉네임은 1~8자로 입력해 주세요.',
   nickname_taken: '이미 쓰고 있는 닉네임이에요.',
   replaced: '다른 기기에서 접속해서 이 연결은 종료돼요.',
+  not_bound: '먼저 방에 입장해 주세요.',
+  not_host: '운영자만 할 수 있어요.',
+  wrong_stage: '지금 단계에서는 할 수 없어요.',
+  stale_vote: '이미 끝났거나 바뀐 투표예요.',
+  bad_vote: '투표 설정이 올바르지 않아요.',
+  bad_ballot: '용지 내용이 올바르지 않아요.',
+  already_submitted: '이미 제출했어요. 고칠 수 없어요.',
 };
+
+type BindingMsg = Extract<ClientMsg, { t: 'createRoom' | 'resumeHost' | 'join' }>;
+type CommandMsg = Exclude<ClientMsg, BindingMsg>;
 
 export interface Hub {
   handleConnection(ws: WebSocket): void;
@@ -65,6 +75,17 @@ export function createHub(store: RoomStore): Hub {
   }
 
   function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
+    switch (msg.t) {
+      case 'createRoom':
+      case 'resumeHost':
+      case 'join':
+        return bind(ws, conn, msg);
+      default:
+        return command(ws, conn, msg);
+    }
+  }
+
+  function bind(ws: WebSocket, conn: Conn, msg: BindingMsg): void {
     if (conn.binding.kind !== 'unbound') return sendError(ws, 'already_bound');
 
     switch (msg.t) {
@@ -102,6 +123,36 @@ export function createHub(store: RoomStore): Hub {
         return;
       }
     }
+  }
+
+  function command(ws: WebSocket, conn: Conn, msg: CommandMsg): void {
+    const { binding } = conn;
+    if (binding.kind === 'unbound') return sendError(ws, 'not_bound');
+
+    if (msg.t === 'submitBallot') {
+      if (binding.kind !== 'participant') return sendError(ws, 'not_bound');
+      const { id } = binding;
+      return apply(ws, binding.code, (room) => submitBallot(store.deps, room, id, msg.voteId, msg.content));
+    }
+
+    if (binding.kind !== 'host') return sendError(ws, 'not_host');
+    switch (msg.t) {
+      case 'startVote':
+        return apply(ws, binding.code, (room) => startVote(store.deps, room, msg.draft));
+      case 'closeVote':
+        return apply(ws, binding.code, (room) => closeVote(store.deps, room, msg.voteId));
+      case 'dismissVote':
+        return apply(ws, binding.code, (room) => dismissVote(store.deps, room, msg.voteId));
+    }
+  }
+
+  function apply(ws: WebSocket, code: string, transition: (room: Room) => Transition<ErrorReason>): void {
+    const room = store.get(code);
+    if (!room) return sendError(ws, 'room_not_found');
+    const result = transition(room);
+    if (!result.ok) return sendError(ws, result.reason);
+    store.update(code, () => result.room);
+    broadcast(code);
   }
 
   // The evicted socket is unbound before closing so its close event does not mark the participant disconnected.

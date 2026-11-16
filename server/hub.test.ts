@@ -199,7 +199,9 @@ describe('one socket per participant', () => {
     expect(second.joined.view.me).toEqual(first.joined.view.me);
 
     const hostView = (await host.expect('view')).view;
-    expect(hostView.participants).toEqual([{ id: first.joined.view.me.id, nickname: 'Alice', connected: true }]);
+    expect(hostView.participants).toEqual([
+      { id: first.joined.view.me.id, nickname: 'Alice', connected: true, submitted: false },
+    ]);
     await host.expectQuiet();
   });
 });
@@ -244,5 +246,202 @@ describe('privacy', () => {
       expect(raw).not.toContain(tokenOf(alice));
       expect(raw).not.toContain(tokenOf(bob));
     }
+  });
+});
+
+const draft = { title: '이번 달 MVP는?', paper: { kind: 'freeform' }, anonymity: 'anonymous' } as const;
+const lunch = { title: '점심', paper: { kind: 'choice', options: ['김밥', '라면'] }, anonymity: 'named' } as const;
+
+async function roomWithGuests(...nicknames: string[]) {
+  const { host, code } = await openRoom();
+  const guests: Awaited<ReturnType<typeof joinRoom>>[] = [];
+  for (const nickname of nicknames) {
+    guests.push(await joinRoom(code, nickname));
+    await host.expect('view');
+    for (const earlier of guests.slice(0, -1)) await earlier.client.expect('view');
+  }
+  return { host, code, guests };
+}
+
+async function views(...cs: TestClient[]) {
+  return Promise.all(cs.map(async (c) => (await c.expect('view')).view));
+}
+
+async function openVote(host: TestClient, guests: { client: TestClient }[], d: object = draft) {
+  host.send({ t: 'startVote', draft: d });
+  const [hostView] = await views(host, ...guests.map((g) => g.client));
+  if (hostView?.role !== 'host' || hostView.stage.kind !== 'voting') throw new Error('vote did not open');
+  return hostView.stage.vote.id;
+}
+
+describe('voting lifecycle', () => {
+  it('runs a whole vote: start, two submits, close, a refused late submit, dismiss, and a second vote', async () => {
+    const { host, code, guests } = await roomWithGuests('Alice', 'Bob');
+    const [alice, bob] = guests.map((g) => g.client) as [TestClient, TestClient];
+
+    host.send({ t: 'startVote', draft });
+    const [hostOpen, aliceOpen, bobOpen] = await views(host, alice, bob);
+    const voteId = aliceOpen?.role === 'participant' && aliceOpen.stage.kind === 'voting' ? aliceOpen.stage.vote.id : '';
+    expect(voteId).not.toBe('');
+    expect(hostOpen).toMatchObject({
+      role: 'host',
+      stage: { kind: 'voting', submittedCount: 0, vote: { title: '이번 달 MVP는?', anonymity: 'anonymous', paper: { kind: 'freeform' } } },
+    });
+    expect(aliceOpen).toMatchObject({ role: 'participant', stage: { kind: 'voting', submitted: false, vote: { id: voteId } } });
+    expect(bobOpen).toMatchObject({ stage: { kind: 'voting', submitted: false } });
+
+    alice.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: '비밀문장-ALPHA' } });
+    const [hostAfterAlice, aliceAfter, bobAfterAlice] = await views(host, alice, bob);
+    expect(hostAfterAlice).toMatchObject({ stage: { submittedCount: 1 } });
+    expect(hostAfterAlice!.participants.map((p) => [p.nickname, 'submitted' in p && p.submitted])).toEqual([
+      ['Alice', true],
+      ['Bob', false],
+    ]);
+    expect(aliceAfter).toMatchObject({ stage: { submitted: true } });
+    expect(bobAfterAlice).toMatchObject({ stage: { submitted: false } });
+    expect(bobAfterAlice!.participants.every((p) => !('submitted' in p))).toBe(true);
+
+    bob.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: '다른 문장' } });
+    const [hostAfterBob] = await views(host, alice, bob);
+    expect(hostAfterBob).toMatchObject({ stage: { submittedCount: 2 } });
+    expect(hostAfterBob!.participants.every((p) => 'submitted' in p && p.submitted)).toBe(true);
+
+    host.send({ t: 'closeVote', voteId });
+    const [hostClosed, aliceClosed] = await views(host, alice, bob);
+    expect(hostClosed).toMatchObject({ stage: { kind: 'closed', ballotCount: 2 } });
+    expect(aliceClosed).toMatchObject({ stage: { kind: 'closed', submitted: true } });
+
+    const late = await joinRoom(code, 'Late');
+    await views(host, alice, bob);
+    late.client.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: '너무 늦음' } });
+    await late.client.expectError('wrong_stage');
+    await host.expectQuiet();
+    await alice.expectQuiet();
+
+    host.send({ t: 'dismissVote', voteId });
+    const [hostLobby, aliceLobby] = await views(host, alice, bob, late.client);
+    expect(hostLobby).toMatchObject({ stage: { kind: 'lobby' } });
+    expect(hostLobby!.participants.every((p) => 'submitted' in p && !p.submitted)).toBe(true);
+    expect(aliceLobby).toMatchObject({ stage: { kind: 'lobby' } });
+
+    const secondId = await openVote(host, [...guests, late], lunch);
+    expect(secondId).not.toBe(voteId);
+
+    for (const c of [host, alice, bob, late.client]) {
+      for (const raw of c.raw) {
+        expect(raw).not.toContain('비밀문장-ALPHA');
+        expect(raw).not.toContain('다른 문장');
+      }
+    }
+  });
+
+  it('answers a multiple-choice submit and lets a late joiner vote', async () => {
+    const { host, code, guests } = await roomWithGuests('Alice');
+    const voteId = await openVote(host, guests, lunch);
+
+    const late = await joinRoom(code, 'Late');
+    expect(late.joined.view.stage).toMatchObject({ kind: 'voting', submitted: false });
+    await views(host, guests[0]!.client);
+
+    late.client.send({ t: 'submitBallot', voteId, content: { kind: 'choice', optionIndex: 1 } });
+    const [hostView, lateView] = await views(host, late.client);
+    expect(hostView).toMatchObject({ stage: { submittedCount: 1 } });
+    expect(lateView).toMatchObject({ stage: { submitted: true } });
+  });
+
+  it('keeps a participant submitted after they reconnect with their token', async () => {
+    const { host, code, guests } = await roomWithGuests('Alice');
+    const alice = guests[0]!;
+    const voteId = await openVote(host, guests);
+    alice.client.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: 'hi' } });
+    await views(host, alice.client);
+
+    alice.client.close();
+    await host.expect('view');
+    const back = await joinRoom(code, 'ignored', alice.joined.participantToken);
+    expect(back.joined.view.stage).toMatchObject({ kind: 'voting', submitted: true });
+  });
+
+  it('refuses host commands from a participant with not_host and changes nothing', async () => {
+    const { host, guests } = await roomWithGuests('Alice');
+    const alice = guests[0]!.client;
+    const voteId = await openVote(host, guests);
+
+    alice.send({ t: 'startVote', draft });
+    await alice.expectError('not_host');
+    alice.send({ t: 'closeVote', voteId });
+    await alice.expectError('not_host');
+    alice.send({ t: 'dismissVote', voteId });
+    await alice.expectError('not_host');
+    await host.expectQuiet();
+
+    host.send({ t: 'closeVote', voteId });
+    expect((await views(host))[0]).toMatchObject({ stage: { kind: 'closed' } });
+  });
+
+  it('refuses all four commands from an unbound socket with not_bound', async () => {
+    const stranger = await connect();
+    const messages = [
+      { t: 'startVote', draft },
+      { t: 'closeVote', voteId: 'x' },
+      { t: 'dismissVote', voteId: 'x' },
+      { t: 'submitBallot', voteId: 'x', content: { kind: 'text', text: 'hi' } },
+    ];
+    for (const msg of messages) {
+      stranger.send(msg);
+      await stranger.expectError('not_bound');
+    }
+  });
+
+  it('refuses a ballot from the host with not_bound', async () => {
+    const { host, guests } = await roomWithGuests('Alice');
+    const voteId = await openVote(host, guests);
+    host.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: 'hi' } });
+    await host.expectError('not_bound');
+    await guests[0]!.client.expectQuiet();
+  });
+
+  it('refuses a stale vote id and leaves the open vote running', async () => {
+    const { host, guests } = await roomWithGuests('Alice');
+    const alice = guests[0]!.client;
+    const voteId = await openVote(host, guests);
+
+    alice.send({ t: 'submitBallot', voteId: 'old-vote', content: { kind: 'text', text: 'hi' } });
+    await alice.expectError('stale_vote');
+    host.send({ t: 'closeVote', voteId: 'old-vote' });
+    await host.expectError('stale_vote');
+    await host.expectQuiet();
+
+    alice.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: 'hi' } });
+    expect((await views(host))[0]).toMatchObject({ stage: { submittedCount: 1 } });
+  });
+
+  it('maps the other refusals to their reasons without broadcasting', async () => {
+    const { host, guests } = await roomWithGuests('Alice');
+    const alice = guests[0]!.client;
+
+    host.send({ t: 'closeVote', voteId: 'x' });
+    await host.expectError('wrong_stage');
+    host.send({ t: 'startVote', draft: { ...draft, title: '   ' } });
+    await host.expectError('bad_vote');
+
+    const voteId = await openVote(host, guests);
+    host.send({ t: 'startVote', draft });
+    await host.expectError('wrong_stage');
+    alice.send({ t: 'submitBallot', voteId, content: { kind: 'choice', optionIndex: 0 } });
+    await alice.expectError('bad_ballot');
+    alice.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: 'ok' } });
+    await views(host, alice);
+    alice.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: 'again' } });
+    await alice.expectError('already_submitted');
+
+    await host.expectQuiet();
+  });
+
+  it('sends a Korean message with each refusal', async () => {
+    const stranger = await connect();
+    stranger.send({ t: 'closeVote', voteId: 'x' });
+    const error = await stranger.expect('error');
+    expect(error.message).toMatch(/[가-힣]/);
   });
 });

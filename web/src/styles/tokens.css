@@ -15,12 +15,22 @@
   --brand-ink: #fff;
   --accent: #f5c518;
   --danger: #a82d1c;
+  --stamp: #b5301f;
+  --todo: #f5c518;
   --danger-bg: #fdecea;
 
   --field: #fff;
   --panel: #fff;
   --chip: #eef1ea;
   --chip-line: #d3dacf;
+
+  --seg-bg: #dfe5db;
+  --seg-on: #fff;
+
+  --paper: #f8f2e2;
+  --paper-line: rgba(60, 90, 130, 0.26);
+  --paper-ink: #1d2330;
+  --paper-shadow: 0 1px 1px rgba(40, 30, 10, 0.2), 0 8px 18px rgba(40, 30, 10, 0.18);
 
   --caret: #1b5e47;
   --sel: #f5c518;

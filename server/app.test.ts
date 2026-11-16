@@ -92,7 +92,7 @@ describe('websocket endpoint', () => {
 
     await quiet.closed;
     const after = (await host.expect('view')).view;
-    expect(after.participants).toEqual([{ id: expect.any(String), nickname: 'Quiet', connected: false }]);
+    expect(after.participants).toEqual([{ id: expect.any(String), nickname: 'Quiet', connected: false, submitted: false }]);
     expect(host.ws.readyState).toBe(WebSocket.OPEN);
   });
 });

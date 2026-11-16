@@ -1,11 +1,31 @@
 import { z } from 'zod';
+import { anonymitySchema, ballotContentSchema, paperSchema, voteDraftSchema } from './vote.ts';
 
 export const ROOM_CODE_PATTERN = /^\d{4}$/;
 
 export const roomCodeSchema = z.string().regex(ROOM_CODE_PATTERN);
 export const tokenSchema = z.string().min(16).max(64);
 
-export const stageSchema = z.discriminatedUnion('kind', [z.object({ kind: z.literal('lobby') })]);
+export const votePublicSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  anonymity: anonymitySchema,
+  paper: paperSchema,
+});
+
+const lobbyStage = z.object({ kind: z.literal('lobby') });
+
+export const hostStageSchema = z.discriminatedUnion('kind', [
+  lobbyStage,
+  z.object({ kind: z.literal('voting'), vote: votePublicSchema, submittedCount: z.number().int().nonnegative() }),
+  z.object({ kind: z.literal('closed'), vote: votePublicSchema, ballotCount: z.number().int().nonnegative() }),
+]);
+
+export const participantStageSchema = z.discriminatedUnion('kind', [
+  lobbyStage,
+  z.object({ kind: z.literal('voting'), vote: votePublicSchema, submitted: z.boolean() }),
+  z.object({ kind: z.literal('closed'), vote: votePublicSchema, submitted: z.boolean() }),
+]);
 
 export const participantSummarySchema = z.object({
   id: z.string(),
@@ -13,17 +33,19 @@ export const participantSummarySchema = z.object({
   connected: z.boolean(),
 });
 
+export const hostParticipantSchema = participantSummarySchema.extend({ submitted: z.boolean() });
+
 export const hostViewSchema = z.object({
   role: z.literal('host'),
   code: roomCodeSchema,
-  stage: stageSchema,
-  participants: z.array(participantSummarySchema),
+  stage: hostStageSchema,
+  participants: z.array(hostParticipantSchema),
 });
 
 export const participantViewSchema = z.object({
   role: z.literal('participant'),
   code: roomCodeSchema,
-  stage: stageSchema,
+  stage: participantStageSchema,
   me: z.object({ id: z.string(), nickname: z.string() }),
   participants: z.array(participantSummarySchema),
 });
@@ -39,6 +61,10 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
     nickname: z.string().max(64),
     participantToken: tokenSchema.optional(),
   }),
+  z.object({ t: z.literal('startVote'), draft: voteDraftSchema }),
+  z.object({ t: z.literal('closeVote'), voteId: z.string() }),
+  z.object({ t: z.literal('dismissVote'), voteId: z.string() }),
+  z.object({ t: z.literal('submitBallot'), voteId: z.string(), content: ballotContentSchema }),
 ]);
 
 export const errorReasonSchema = z.enum([
@@ -51,6 +77,13 @@ export const errorReasonSchema = z.enum([
   'nickname_invalid',
   'nickname_taken',
   'replaced',
+  'not_bound',
+  'not_host',
+  'wrong_stage',
+  'stale_vote',
+  'bad_vote',
+  'bad_ballot',
+  'already_submitted',
 ]);
 
 export const serverMsgSchema = z.discriminatedUnion('t', [
@@ -60,8 +93,11 @@ export const serverMsgSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('error'), reason: errorReasonSchema, message: z.string() }),
 ]);
 
-export type Stage = z.infer<typeof stageSchema>;
+export type VotePublic = z.infer<typeof votePublicSchema>;
+export type HostStage = z.infer<typeof hostStageSchema>;
+export type ParticipantStage = z.infer<typeof participantStageSchema>;
 export type ParticipantSummary = z.infer<typeof participantSummarySchema>;
+export type HostParticipant = z.infer<typeof hostParticipantSchema>;
 export type HostView = z.infer<typeof hostViewSchema>;
 export type ParticipantView = z.infer<typeof participantViewSchema>;
 export type View = z.infer<typeof viewSchema>;

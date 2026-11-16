@@ -1,32 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { viewSchema } from '../shared/protocol.ts';
 import { createRoom, isHostToken, join, RoomStore, setConnected, viewFor } from './rooms.ts';
-import type { Deps, Room } from './rooms.ts';
-
-function fakeDeps(codes: string[] = ['1234']): Deps & { tick(ms: number): void } {
-  let clock = 1_000;
-  let n = 0;
-  let codeIndex = 0;
-  return {
-    now: () => clock,
-    tick: (ms) => {
-      clock += ms;
-    },
-    randomCode: () => codes[Math.min(codeIndex++, codes.length - 1)]!,
-    randomToken: () => `token-${String(++n).padStart(16, '0')}`,
-    randomId: () => `id-${n++}`,
-  };
-}
-
-function roomWith(deps: Deps, ...nicknames: string[]): Room {
-  let room = createRoom(deps, new Set())!;
-  for (const nickname of nicknames) {
-    const result = join(deps, room, { nickname });
-    if (!result.ok) throw new Error(`setup join failed: ${result.reason}`);
-    room = result.room;
-  }
-  return room;
-}
+import { fakeDeps, roomWith } from './testkit.ts';
 
 describe('createRoom', () => {
   it('creates an empty lobby with the picked code', () => {
@@ -84,7 +59,7 @@ describe('join', () => {
     const result = join(deps, room, { nickname: '  민지  ' });
     if (!result.ok) throw new Error(result.reason);
     expect(viewFor(result.room, { kind: 'host' }).participants).toEqual([
-      { id: result.participant.id, nickname: '민지', connected: true },
+      { id: result.participant.id, nickname: '민지', connected: true, submitted: false },
     ]);
   });
 
@@ -179,8 +154,8 @@ describe('viewFor', () => {
     expect(view.role).toBe('host');
     expect(view.code).toBe(room.code);
     expect(view.participants).toEqual([
-      { id: alice.id, nickname: 'Alice', connected: false },
-      { id: expect.any(String), nickname: 'Bob', connected: true },
+      { id: alice.id, nickname: 'Alice', connected: false, submitted: false },
+      { id: expect.any(String), nickname: 'Bob', connected: true, submitted: false },
     ]);
   });
 

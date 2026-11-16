@@ -2,6 +2,8 @@ import { WebSocket } from 'ws';
 import type { ClientOptions } from 'ws';
 import { serverMsgSchema } from '../shared/protocol.ts';
 import type { ServerMsg } from '../shared/protocol.ts';
+import { createRoom, join } from './rooms.ts';
+import type { Deps, Room } from './rooms.ts';
 
 type MsgOf<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>;
 
@@ -75,4 +77,29 @@ export class TestClient {
   close(): void {
     this.ws.terminate();
   }
+}
+
+export function fakeDeps(codes: string[] = ['1234']): Deps & { tick(ms: number): void } {
+  let clock = 1_000;
+  let n = 0;
+  let codeIndex = 0;
+  return {
+    now: () => clock,
+    tick: (ms) => {
+      clock += ms;
+    },
+    randomCode: () => codes[Math.min(codeIndex++, codes.length - 1)]!,
+    randomToken: () => `token-${String(++n).padStart(16, '0')}`,
+    randomId: () => `id-${n++}`,
+  };
+}
+
+export function roomWith(deps: Deps, ...nicknames: string[]): Room {
+  let room = createRoom(deps, new Set())!;
+  for (const nickname of nicknames) {
+    const result = join(deps, room, { nickname });
+    if (!result.ok) throw new Error(`setup join failed: ${result.reason}`);
+    room = result.room;
+  }
+  return room;
 }

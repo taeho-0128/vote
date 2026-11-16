@@ -49,6 +49,11 @@
   .app--host .appbar-in {
     padding: 0 32px;
   }
+
+  .app--host .banner-in {
+    padding-right: 32px;
+    padding-left: 32px;
+  }
 }
 
 .logo {
@@ -85,6 +90,29 @@
   color: var(--ink);
   font-size: 14px;
   font-weight: 700;
+}
+
+.banners {
+  position: sticky;
+  top: var(--appbar-h);
+  z-index: 9;
+}
+
+.banners .banner {
+  position: static;
+}
+
+.banner--error {
+  background: var(--danger-bg);
+  color: var(--danger);
+  box-shadow: inset 0 -3px 0 var(--danger);
+}
+
+.banner--error .form-error {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
 }
 
 .banner-in {
@@ -335,6 +363,7 @@
 }
 
 .names li {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -403,6 +432,94 @@
   line-height: 18px;
 }
 
+/* 가안 A의 명부. 안 낸 사람은 노란 칸으로 눈에 띄고, 낸 사람은 붉은 도장이 찍힌다. */
+.names.todo li,
+.names.todo li.off {
+  border-style: solid;
+  border-color: #d9aa00;
+  background: var(--todo);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.names.todo li.off {
+  border-style: dashed;
+}
+
+.names.todo .dot,
+.names.todo li.off .dot {
+  background: var(--ink);
+  box-shadow: none;
+  opacity: 0.5;
+}
+
+.roll--closed .names.todo li,
+.roll--closed .names.todo li.off {
+  border-color: var(--line);
+  border-style: dashed;
+  background: transparent;
+  color: var(--dim);
+  font-weight: 500;
+}
+
+.roll--closed .names.todo .dot {
+  background: var(--dim);
+}
+
+.names.done li {
+  padding-right: 42px;
+}
+
+.stamp {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 2px solid var(--stamp);
+  border-radius: 50%;
+  color: var(--stamp);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  transform: rotate(-14deg);
+  animation: stamp 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+
+.names .stamp {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  margin-top: -13px;
+}
+
+.names li:nth-child(3n + 2) .stamp {
+  transform: rotate(9deg);
+}
+
+@keyframes stamp {
+  from {
+    opacity: 0;
+    transform: scale(1.9) rotate(-14deg);
+  }
+}
+
+.roll-group + .roll-group {
+  margin-top: 16px;
+}
+
+.roll-group h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.roll-group h3 b {
+  font-variant-numeric: tabular-nums;
+}
+
 @keyframes enter {
   from {
     opacity: 0;
@@ -457,7 +574,18 @@
   gap: 16px;
 }
 
+.host-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
 @media (min-width: 1024px) {
+  .host-col {
+    align-self: stretch;
+  }
+
   .host-main {
     display: grid;
     grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
@@ -604,33 +732,24 @@
   position: sticky;
   bottom: 0;
   z-index: 10;
-  background: var(--screen);
-  box-shadow: 0 -1px 0 var(--line);
 }
 
 .bar-bottom-in {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   max-width: var(--col);
   margin: 0 auto;
   padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+  background: var(--screen);
+  box-shadow: 0 -1px 0 var(--line);
 }
 
 .bar-bottom .hint {
   text-align: center;
 }
 
-.bar-actions {
-  display: none;
-}
-
 @media (min-width: 1024px) {
-  .bar-bottom {
-    display: none;
-  }
-
-  .bar-actions {
-    display: block;
-  }
-
   .bar-actions .actions {
     flex-direction: row;
     align-items: center;
@@ -639,6 +758,11 @@
 
   .bar-actions .hint {
     color: #dcebe3;
+  }
+
+  .bar-actions .actions-row .btn {
+    flex: none;
+    white-space: nowrap;
   }
 
   .bar-actions .btn {
