@@ -45,6 +45,7 @@ export function createFakeRoom() {
     ballots: new Map(),
     received: [],
     refuseNext: null,
+    latency: 0,
   };
 
   const summaries = () => room.participants.map(({ id, nickname, connected }) => ({ id, nickname, connected }));
@@ -56,7 +57,7 @@ export function createFakeRoom() {
   };
   const participantStage = (id) => {
     if (room.stage === 'lobby') return { kind: 'lobby' };
-    return { kind: room.stage, vote: room.vote, submitted: room.ballots.has(id) };
+    return { kind: room.stage, vote: room.vote, submitted: room.ballots.has(id), submittedCount: room.ballots.size };
   };
   const viewFor = (sock) => {
     if (sock.role === 'host') {
@@ -193,6 +194,8 @@ export function createFakeRoom() {
           sock.id = me.id;
           send(sock, { t: 'joined', participantToken: me.token, view: viewFor(sock) });
           room.broadcast();
+        } else if (room.latency > 0) {
+          setTimeout(() => handleCommand(sock, msg, fail), room.latency);
         } else {
           handleCommand(sock, msg, fail);
         }

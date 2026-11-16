@@ -9,8 +9,8 @@ const BASE = `http://localhost:${PORT}`;
 const OUT = fileURLToPath(new URL('./out/', import.meta.url));
 mkdirSync(OUT, { recursive: true });
 
-const server = spawn('npx', ['tsx', 'server/main.ts'], { env: { ...process.env, PORT: String(PORT) }, shell: true, stdio: 'ignore' });
-const stop = () => { spawn('taskkill', ['/pid', String(server.pid), '/T', '/F'], { shell: true, stdio: 'ignore' }); };
+const server = spawn(process.execPath, ['--import', 'tsx', 'server/main.ts'], { env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
+const stop = () => server.kill();
 
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`); };

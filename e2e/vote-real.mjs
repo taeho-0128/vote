@@ -9,8 +9,8 @@ const BASE = `http://localhost:${PORT}`;
 const OUT = fileURLToPath(new URL('./out/', import.meta.url));
 mkdirSync(OUT, { recursive: true });
 
-const server = spawn('npx', ['tsx', 'server/main.ts'], { env: { ...process.env, PORT: String(PORT) }, shell: true, stdio: 'ignore' });
-const stop = () => { spawn('taskkill', ['/pid', String(server.pid), '/T', '/F'], { shell: true, stdio: 'ignore' }); };
+const server = spawn(process.execPath, ['--import', 'tsx', 'server/main.ts'], { env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
+const stop = () => server.kill();
 
 const results = [];
 const check = (name, ok, detail = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`); };
@@ -58,6 +58,7 @@ try {
   const badge = await text(a.page.getByTestId('anon-badge'));
   check('anonymous badge is shown to participants', badge.includes('이름이 표시되지 않아요'), badge);
 
+  await a.page.getByTestId('mode-type').click();
   await a.page.getByTestId('ballot-text').fill('서연이요! 발표 자료 같이 만들어 줘서 고마웠어요');
   await a.page.getByTestId('ballot-submit').click();
   await a.page.getByTestId('ballot-confirm').click();
@@ -70,6 +71,7 @@ try {
   await a.page.getByTestId('ballot-submitted').waitFor();
   check('submitted state survives a participant reload', true);
 
+  await b.page.getByTestId('mode-type').click();
   await b.page.getByTestId('ballot-text').fill('민준이가 맨날 청소를 먼저 해요');
   await b.page.getByTestId('ballot-submit').click();
   await b.page.getByTestId('ballot-confirm').click();
