@@ -1,0 +1,36 @@
+/* 가안 A · 투표소의 팔레트. 공공 안내판의 녹색 필드와 선거인 명부. */
+:root {
+  --f-ui: 'Noto Sans KR', system-ui, sans-serif;
+  --f-display: 'Black Han Sans', 'Noto Sans KR', sans-serif;
+  --f-hand: 'Nanum Pen Script', cursive;
+
+  --page: #e8ebe4;
+  --screen: #f3f5ef;
+  --ink: #14211b;
+  --ink-2: #46564d;
+  --dim: #5a6a60;
+  --line: #7f8f84;
+
+  --brand: #1b5e47;
+  --brand-ink: #fff;
+  --accent: #f5c518;
+  --danger: #a82d1c;
+  --danger-bg: #fdecea;
+
+  --field: #fff;
+  --panel: #fff;
+  --chip: #eef1ea;
+  --chip-line: #d3dacf;
+
+  --caret: #1b5e47;
+  --sel: #f5c518;
+  --sel-ink: #14211b;
+  --focus: #0b57d0;
+  --focus-on-dark: #ffd54a;
+
+  --r: 6px;
+  --r-lg: 10px;
+  --shadow-1: 0 1px 2px rgba(20, 33, 27, 0.16), 0 2px 6px rgba(20, 33, 27, 0.08);
+
+  --appbar-h: 56px;
+}
