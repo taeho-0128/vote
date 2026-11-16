@@ -1,7 +1,7 @@
 // The voting lifecycle, walked with a host and three participants against the fake server:
 // compose, start, write and submit both papers, close, dismiss, plus every refusal the screens handle.
 import { createFakeRoom } from './fake-server.mjs';
-import { ORIGIN, box, byId, check, noHorizontalScroll, shot, watchPage } from './kit.mjs';
+import { ORIGIN, box, byId, check, joinAs, noHorizontalScroll, shot, watchPage } from './kit.mjs';
 
 const OFFLINE = '연결이 끊겨서 보내지 못했어요';
 
@@ -13,23 +13,9 @@ const focusedId = (page) => page.evaluate(() => document.activeElement?.getAttri
 const stored = (page, key) => page.evaluate((k) => localStorage.getItem(k), key);
 const lengthOf = (s) => [...s].length;
 
-async function joinAs(browser, size, room, nickname, problems, { blockStorage = false } = {}) {
-  const ctx = await browser.newContext({ viewport: size, locale: 'ko-KR' });
-  if (blockStorage) {
-    await ctx.addInitScript(() => {
-      Object.defineProperty(window, 'localStorage', {
-        get() {
-          throw new DOMException('blocked', 'SecurityError');
-        },
-      });
-    });
-  }
-  const page = await ctx.newPage();
-  watchPage(page, problems);
-  await room.install(page);
-  await page.goto(`${ORIGIN}/r/${room.code}?nick=${encodeURIComponent(nickname)}`);
-  await page.locator('.pill', { hasText: `· ${nickname}` }).waitFor();
-  return { ctx, page };
+async function typeMode(page) {
+  await byId(page, 'mode-type').check();
+  await byId(page, 'ballot-text').waitFor();
 }
 
 async function pressSubmit(page) {
@@ -170,6 +156,8 @@ export async function runVoteWalk(browser, size) {
   await pageB.getByTestId('vote-title-view').waitFor();
   check(`participant ${tag}: title and anonymous badge`, (await text(pageA, 'vote-title-view')) === '이번 달 MVP는 누구인가요?' && (await text(pageA, 'anon-badge')).trim() === '공개 화면에 이름이 표시되지 않아요');
   check(`participant ${tag}: submit disabled on an empty paper`, await byId(pageA, 'ballot-submit').isDisabled());
+  check(`participant ${tag}: a fresh free-form paper opens in write mode`, (await byId(pageA, 'mode-write').isChecked()) && (await count(pageA, 'ballot-text')) === 0);
+  await typeMode(pageA);
   await byId(pageA, 'ballot-text').fill('   ');
   check(`participant ${tag}: whitespace only stays disabled`, await byId(pageA, 'ballot-submit').isDisabled());
   const written = '서연이요!\n발표 자료 같이 만들어 줘서 정말 고마웠어요';
@@ -354,7 +342,8 @@ export async function runVoteWalk(browser, size) {
   await composeVote(host, { title: '이번 주 한 줄 소감', kind: 'freeform', anonymity: 'named' });
   await byId(host, 'start-vote').click();
   await byId(host, 'submitted-count').waitFor();
-  await byId(pageB, 'ballot-text').waitFor();
+  await byId(pageB, 'mode-type').waitFor();
+  await typeMode(pageB);
   check(`participant ${tag}: named free-form badge`, (await text(pageB, 'anon-badge')).trim() === '공개 화면에 ‘보리’ 이름이 표시돼요');
   await byId(pageB, 'ballot-text').fill('발표 자료 같이 만들어 줘서 정말 고마웠어요. 다음에도 같이 해요!');
   check(`participant ${tag}: signature on the free-form paper`, (await pageB.locator('.sig').textContent()) === '— 보리');
@@ -363,6 +352,7 @@ export async function runVoteWalk(browser, size) {
 
   const d = await joinAs(browser, size, room, '무저장', problems, { blockStorage: true });
   extraContexts.push(d.ctx);
+  await typeMode(d.page);
   await byId(d.page, 'ballot-text').fill('저장소가 막혀 있어도 돼요');
   await pressSubmit(d.page);
   await byId(d.page, 'ballot-confirm').click();

@@ -1,6 +1,8 @@
 // A scripted stand-in for the WebSocket server, installed per page with page.routeWebSocket.
 // It follows the contract in shared/protocol.ts closely enough to drive the real screens, and it can be told to
 // refuse the next command so the refusal paths can be walked.
+import { ballotContentSchema, normalizeBallotContent } from '../shared/vote.ts';
+
 const NAMES = ['민준', '서연', '지후', '도윤', '예은', '시우', '하린', '주원', '채원', '지안', '이안', '유나'];
 const MANY = ['가온', '은우', '세아', '윤호', '지민', '재이', '아린', '단우', '해든', '나래', '보람', '시현', '예준', '라온', '한결', '새봄', '도하', '이레', '우진', '설아', '찬영', '미르', '다인', '건우', '수아', '로운', '태오', '다온', '나은', '현우', '소율', '준서', '유빈', '하준', '서윤', '지율', '이든', '다솔', '별이'];
 const pad = (s) => s.padEnd(24, 'x');
@@ -17,12 +19,10 @@ function draftProblem(draft) {
   return null;
 }
 
+// The refusal rules are the shared ones, so a ballot the fake accepts is one the real server accepts.
 function ballotProblem(content, paper) {
-  if (paper.kind === 'freeform') {
-    const text = content.kind === 'text' ? content.text.trim() : '';
-    return length(text) < 1 || length(text) > 200 ? 'bad' : null;
-  }
-  return content.kind === 'choice' && content.optionIndex < paper.options.length ? null : 'bad';
+  const parsed = ballotContentSchema.safeParse(content);
+  return parsed.success && normalizeBallotContent(parsed.data, paper) ? null : 'bad';
 }
 
 export function createFakeRoom() {

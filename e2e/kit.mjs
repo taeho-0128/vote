@@ -75,3 +75,22 @@ export function watchPage(page, problems) {
     if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|ERR_/.test(m.text())) problems.push(m.text());
   });
 }
+
+export async function joinAs(browser, size, room, nickname, problems, { blockStorage = false } = {}) {
+  const ctx = await browser.newContext({ viewport: size, locale: 'ko-KR' });
+  if (blockStorage) {
+    await ctx.addInitScript(() => {
+      Object.defineProperty(window, 'localStorage', {
+        get() {
+          throw new DOMException('blocked', 'SecurityError');
+        },
+      });
+    });
+  }
+  const page = await ctx.newPage();
+  watchPage(page, problems);
+  await room.install(page);
+  await page.goto(`${ORIGIN}/r/${room.code}?nick=${encodeURIComponent(nickname)}`);
+  await page.locator('.pill', { hasText: `· ${nickname}` }).waitFor();
+  return { ctx, page };
+}

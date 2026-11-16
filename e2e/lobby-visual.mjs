@@ -1,10 +1,11 @@
 // Visual and behavior check of the lobby and the voting lifecycle against a faked WebSocket server.
-// Run from the project root: node e2e/lobby-visual.mjs
+// Run from the project root: npx tsx e2e/lobby-visual.mjs (the fake server and the ink walk import shared/*.ts)
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
 import { createFakeRoom } from './fake-server.mjs';
 import { EDGE, ORIGIN, OUT, SIZES, box, byId, check, failures, noHorizontalScroll, settle, shot, startVite, stopVite, watchPage } from './kit.mjs';
+import { runInkWalk } from './ink-walk.mjs';
 import { runVoteWalk } from './vote-walk.mjs';
 
 async function checkBreakpoints(page, restore) {
@@ -188,6 +189,7 @@ try {
   for (const size of SIZES) {
     await runWidth(browser, size);
     await runVoteWalk(browser, size);
+    await runInkWalk(browser, size);
   }
 } finally {
   await browser?.close();
