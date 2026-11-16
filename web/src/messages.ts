@@ -22,6 +22,8 @@ export const ERROR_COPY: Record<ErrorReason, string> = {
   already_submitted: '이미 제출한 용지가 있어요.',
   bad_display_token: '대화면 주소가 올바르지 않아요. 운영자 화면의 "대화면 열기"에서 주소를 다시 받아 주세요.',
   bad_reveal: '그 용지로는 넘길 수 없어요. 화면에 보이는 용지를 확인한 뒤 다시 눌러 주세요.',
+  rate_limited: '시도가 너무 많았어요. 잠시 기다린 뒤에 다시 시도해 주세요.',
+  room_expired: '방이 닫혔어요. 6시간 동안 아무 활동이 없으면 방이 사라져요.',
 };
 
 // Not an ErrorReason: the command never left the browser.
@@ -34,3 +36,51 @@ export const DRAFT_ERROR_COPY: Record<VoteDraftError, string> = {
   option_long: `보기는 ${OPTION_MAX}자까지 적을 수 있어요.`,
   option_duplicate: '같은 보기가 있어요. 보기끼리 다르게 적어 주세요.',
 };
+
+export const ROOM_CLOSED_COPY = {
+  title: '방이 닫혔어요',
+  reason: '6시간 동안 아무 활동이 없어서 방이 사라졌어요. 투표와 용지는 남아 있지 않아요.',
+  host: '새 방을 만들어서 다시 시작할 수 있어요.',
+  participant: '투표를 이어 가려면 운영자에게 새 방을 열어 달라고 해 주세요.',
+  display: '운영자 화면에서 새 방을 만든 뒤 대화면 주소를 다시 받아 주세요.',
+  home: '처음으로 돌아가기',
+} as const;
+
+export const RATE_LIMIT_DEFAULT_SECONDS = 60;
+
+export const RATE_LIMIT_COPY = {
+  title: '잠시 기다려 주세요',
+  message: (seconds: number) => `짧은 시간에 너무 많이 시도했어요. ${seconds}초 뒤에 다시 시도할 수 있어요.`,
+  ready: '이제 다시 시도할 수 있어요.',
+  retry: '다시 시도',
+  waiting: (seconds: number) => `${seconds}초 뒤에 다시 시도`,
+} as const;
+
+export const EXPORT_COPY = {
+  heading: '내보내기',
+  csv: 'CSV 내려받기',
+  pdf: 'PDF로 저장',
+  hintAnonymous: '익명 투표라서 파일에 닉네임이 들어가지 않아요.',
+  hintNamed: '기명 투표라서 파일에 닉네임이 들어가요.',
+  done: '내보냈어요',
+  printBlocked: '인쇄 창이 열리지 않았어요. 브라우저의 인쇄 기능을 직접 열어 주세요.',
+  confirmTitle: '아직 내보내지 않았어요',
+  confirmBody: (count: number) => `새 투표를 만들면 이 투표의 용지 ${count}장은 화면에서 사라지고 다시 내보낼 수 없어요.`,
+  confirmSkip: '그냥 새 투표 만들기',
+} as const;
+
+export const EXPIRY_COPY = {
+  before: '계속 쓰지 않으면 방이',
+  after: '뒤에 닫혀요.',
+  minutes: (minutes: number) => `${minutes}분`,
+  seconds: (seconds: number) => `${seconds}초`,
+  now: '방이 곧 닫혀요.',
+  unexported: '아직 내보내지 않은 투표가 있어요.',
+  keep: '계속 사용',
+  keeping: '연장하는 중…',
+} as const;
+
+export const SETTINGS_COPY = {
+  label: '공개 설정',
+  hiddenNow: '대화면 가림 중',
+} as const;

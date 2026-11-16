@@ -4,9 +4,12 @@ import { NICKNAME_MAX, normalizeNickname } from '../../../shared/nickname.ts';
 import type { ClientMsg, ErrorReason, ParticipantView } from '../../../shared/protocol.ts';
 import { Icon } from '../components/Icon.tsx';
 import { AppBar, ConnectionBanner, Notice } from '../components/Frame.tsx';
+import { RateLimitNotice } from '../components/RateLimitNotice.tsx';
+import { RoomClosed } from '../components/RoomClosed.tsx';
 import { Roster } from '../components/Roster.tsx';
 import { useConnection } from '../connection.ts';
 import { ERROR_COPY } from '../messages.ts';
+import { waitSecondsFrom } from '../rateLimit.ts';
 import {
   clearParticipant,
   getLastNickname,
@@ -54,9 +57,12 @@ export function ParticipantScreen({ code }: { code: string }) {
   const [error, setError] = useState<ErrorReason | null>(start.error);
   const [attempting, setAttempting] = useState(() => getParticipant(code) !== null || start.pendingNickname !== null);
   const seated = useRef(false);
+  const [limit, setLimit] = useState<{ id: number; seconds: number } | null>(null);
+  const [generation, setGeneration] = useState(0);
 
-  const { status, view, send } = useConnection({
+  const { status, view, expired, send } = useConnection({
     enabled: error !== 'room_not_found',
+    generation,
     hello: (): ClientMsg | null => {
       const record = getParticipant(code);
       if (record) return { t: 'join', code, nickname: record.nickname, participantToken: record.token };
@@ -72,6 +78,16 @@ export function ParticipantScreen({ code }: { code: string }) {
         return;
       }
       if (msg.t !== 'error') return;
+      if (msg.reason === 'rate_limited') {
+        seated.current = false;
+        setAttempting(false);
+        setLimit((current) => ({ id: (current?.id ?? 0) + 1, seconds: waitSecondsFrom(msg.message) }));
+        return;
+      }
+      if (msg.reason === 'room_expired') {
+        clearParticipant(code);
+        return;
+      }
       if (seated.current && !SEAT_ERRORS.has(msg.reason)) {
         command.refuse(msg.reason);
         return;
@@ -104,6 +120,23 @@ export function ParticipantScreen({ code }: { code: string }) {
     setAttempting(true);
     send({ t: 'join', code, nickname: name });
   };
+
+  if (expired) return <RoomClosed role="participant" />;
+
+  if (limit) {
+    return (
+      <RateLimitNotice
+        key={limit.id}
+        seconds={limit.seconds}
+        surface="page"
+        onRetry={() => {
+          setLimit(null);
+          setAttempting(true);
+          setGeneration((value) => value + 1);
+        }}
+      />
+    );
+  }
 
   if (error !== null && DEAD_END.has(error)) {
     return (

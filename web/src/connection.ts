@@ -6,6 +6,8 @@ export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed'
 
 export interface ConnectionOptions {
   enabled?: boolean;
+  // Bumped to open a fresh socket after the connection stopped on purpose, such as once a rate limit has run out.
+  generation?: number;
   // Asked on every socket open, so a reconnect resumes with whatever tokens are stored by then.
   hello: () => ClientMsg | null;
   onMessage?: (msg: ServerMsg) => void;
@@ -14,6 +16,8 @@ export interface ConnectionOptions {
 export interface Connection {
   status: ConnectionStatus;
   view: View | null;
+  // The server deleted the room for being idle. Nothing about it can be shown or reached again.
+  expired: boolean;
   send: (msg: ClientMsg) => boolean;
 }
 
@@ -25,14 +29,18 @@ const IDENTITY_REJECTED: ReadonlySet<ErrorReason> = new Set([
   'bad_display_token',
 ]);
 
+// After one of these the server will not change its answer, so the socket closes and nothing reconnects by itself.
+const STOPS_CONNECTION: ReadonlySet<ErrorReason> = new Set(['replaced', 'room_expired', 'rate_limited']);
+
 const BACKOFF_START_MS = 500;
 const BACKOFF_MAX_MS = 5000;
 
 const socketUrl = (): string => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 
-export function useConnection({ enabled = true, hello, onMessage }: ConnectionOptions): Connection {
+export function useConnection({ enabled = true, generation = 0, hello, onMessage }: ConnectionOptions): Connection {
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
   const [view, setView] = useState<View | null>(null);
+  const [expired, setExpired] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const helloRef = useRef(hello);
   const onMessageRef = useRef(onMessage);
@@ -71,7 +79,7 @@ export function useConnection({ enabled = true, hello, onMessage }: ConnectionOp
         const msg = parsed.data;
         // A valid message proves the server is alive, so only now does the backoff start over.
         attempt = 0;
-        if (msg.t === 'error' && msg.reason === 'replaced') {
+        if (msg.t === 'error' && STOPS_CONNECTION.has(msg.reason)) {
           stopped = true;
           clearTimeout(timer);
           setStatus('closed');
@@ -79,7 +87,10 @@ export function useConnection({ enabled = true, hello, onMessage }: ConnectionOp
         }
         onMessageRef.current?.(msg);
         if (msg.t !== 'error') setView(msg.view);
-        else if (IDENTITY_REJECTED.has(msg.reason)) setView(null);
+        else if (msg.reason === 'room_expired') {
+          setExpired(true);
+          setView(null);
+        } else if (IDENTITY_REJECTED.has(msg.reason)) setView(null);
       };
 
       socket.onclose = () => {
@@ -104,7 +115,7 @@ export function useConnection({ enabled = true, hello, onMessage }: ConnectionOp
         socket.close();
       }
     };
-  }, [enabled]);
+  }, [enabled, generation]);
 
   const send = useCallback((msg: ClientMsg): boolean => {
     const socket = socketRef.current;
@@ -113,5 +124,5 @@ export function useConnection({ enabled = true, hello, onMessage }: ConnectionOp
     return true;
   }, []);
 
-  return { status, view, send };
+  return { status, view, expired, send };
 }

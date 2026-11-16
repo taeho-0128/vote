@@ -1,0 +1,187 @@
+/* ---------- 인쇄 보고서 ---------- */
+/* The report is mounted only while a PDF is being made. On screen it sits off to the side but is still laid out, so the
+   fonts its papers need are fetched before the print dialog opens. */
+.print-report {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 182mm;
+  visibility: hidden;
+  pointer-events: none;
+  color: #111;
+  font-family: var(--f-ui);
+}
+
+@page {
+  size: A4 portrait;
+  margin: 14mm;
+}
+
+.pr-page {
+  display: flex;
+  flex-direction: column;
+  break-after: page;
+  page-break-after: always;
+  break-inside: avoid;
+}
+
+.pr-page:last-child {
+  break-after: auto;
+  page-break-after: auto;
+}
+
+.pr-brand {
+  margin-bottom: 6mm;
+  color: var(--brand);
+  font-family: var(--f-display);
+  font-size: 14pt;
+}
+
+.pr-title {
+  margin-bottom: 10mm;
+  font-family: var(--f-display);
+  font-size: 26pt;
+  font-weight: 400;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.pr-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5mm 8mm;
+  margin: 0 0 12mm;
+  padding: 6mm 0;
+  border-block: 0.4mm solid #111;
+}
+
+.pr-facts dt {
+  color: #444;
+  font-size: 10pt;
+  font-weight: 700;
+}
+
+.pr-facts dd {
+  margin: 1mm 0 0;
+  font-size: 15pt;
+  font-weight: 800;
+}
+
+.pr-tally {
+  display: flex;
+  flex-direction: column;
+  gap: 5mm;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pr-tally li {
+  display: grid;
+  grid-template-columns: 52mm 1fr 14mm;
+  align-items: center;
+  gap: 4mm;
+}
+
+.pr-opt {
+  font-size: 13pt;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.pr-track {
+  height: 7mm;
+  overflow: hidden;
+  border: 0.3mm solid #999;
+  background: #eee;
+}
+
+.pr-track i {
+  display: block;
+  width: var(--w);
+  height: 100%;
+  background: #1b5e47;
+}
+
+.pr-tally li.lead .pr-track i {
+  background: #f5c518;
+  box-shadow: inset 0 0 0 0.4mm #8a6d00;
+}
+
+.pr-count {
+  font-size: 16pt;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pr-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6mm;
+  width: 176mm;
+  margin: 0 auto 4mm;
+}
+
+.pr-vote {
+  min-width: 0;
+  overflow: hidden;
+  color: #444;
+  font-size: 11pt;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-pos {
+  flex: none;
+  font-family: var(--f-display);
+  font-size: 20pt;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.pr-sheet {
+  width: 176mm;
+  margin: 0 auto;
+  border: 0.3mm solid #8a8a8a;
+}
+
+@media print {
+  html.printing,
+  html.printing body {
+    background: #fff !important;
+  }
+
+  html.printing body > *:not(.print-report) {
+    display: none !important;
+  }
+
+  html.printing .print-report {
+    position: static;
+    width: auto;
+    visibility: visible;
+  }
+
+  /* A repeating gradient of hairlines loses some of them when it is written into a PDF. A one-row tile repeated down the
+     sheet keeps every ruled line, and starts where the screen's rules start, under the first row of text. */
+  .print-report .pface-sheet {
+    background: none;
+  }
+
+  .print-report .pface-sheet::before {
+    content: '';
+    position: absolute;
+    inset: var(--tf-top, calc(var(--ls) * 0.45)) 0 0 0;
+    background: linear-gradient(to bottom, transparent calc(100% - 1px), var(--paper-line) 0) 0 0 / 100% var(--ls) repeat-y;
+  }
+
+  .print-report,
+  .print-report * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

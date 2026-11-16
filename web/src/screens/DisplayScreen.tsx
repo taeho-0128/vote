@@ -4,8 +4,11 @@ import { tokenSchema } from '../../../shared/protocol.ts';
 import type { ClientMsg, ErrorReason } from '../../../shared/protocol.ts';
 import { DisplayClosed, DisplayLobby, DisplayVoting } from '../components/DisplayStages.tsx';
 import { Icon } from '../components/Icon.tsx';
+import { RateLimitNotice } from '../components/RateLimitNotice.tsx';
+import { RoomClosed } from '../components/RoomClosed.tsx';
 import { useConnection } from '../connection.ts';
 import { ERROR_COPY } from '../messages.ts';
+import { waitSecondsFrom } from '../rateLimit.ts';
 import { useFullscreen } from '../useFullscreen.ts';
 
 // The page is view-only. Every error it can get means this address will not work, so it stops trying.
@@ -14,12 +17,17 @@ export function DisplayScreen({ code, token }: { code: string; token: string }) 
   const [fatal, setFatal] = useState<ErrorReason | null>(tokenOk ? null : 'bad_display_token');
   const root = useRef<HTMLDivElement>(null);
   const fullscreen = useFullscreen(root);
+  const [limit, setLimit] = useState<{ id: number; seconds: number } | null>(null);
+  const [generation, setGeneration] = useState(0);
 
-  const { status, view } = useConnection({
+  const { status, view, expired } = useConnection({
     enabled: fatal === null,
+    generation,
     hello: (): ClientMsg => ({ t: 'watch', code, displayToken: token }),
     onMessage: (msg) => {
-      if (msg.t === 'error') setFatal(msg.reason);
+      if (msg.t !== 'error' || msg.reason === 'room_expired') return;
+      if (msg.reason === 'rate_limited') setLimit((current) => ({ id: (current?.id ?? 0) + 1, seconds: waitSecondsFrom(msg.message) }));
+      else setFatal(msg.reason);
     },
   });
 
@@ -34,7 +42,21 @@ export function DisplayScreen({ code, token }: { code: string; token: string }) 
   const stage = display?.stage;
 
   let content: ReactNode;
-  if (fatal !== null) {
+  if (expired) {
+    content = <RoomClosed role="display" />;
+  } else if (limit) {
+    content = (
+      <RateLimitNotice
+        key={limit.id}
+        seconds={limit.seconds}
+        surface="display"
+        onRetry={() => {
+          setLimit(null);
+          setGeneration((value) => value + 1);
+        }}
+      />
+    );
+  } else if (fatal !== null) {
     content = (
       <div className="d-message" role="alert" data-testid="display-error">
         <h1 className="d-title" data-size="m">
@@ -58,14 +80,14 @@ export function DisplayScreen({ code, token }: { code: string; token: string }) 
   }
 
   return (
-    <div className="display" ref={root} data-testid="display-root" data-stage={stage?.kind ?? (fatal ? 'error' : 'loading')}>
+    <div className="display" ref={root} data-testid="display-root" data-stage={expired ? 'expired' : limit ? 'limited' : (stage?.kind ?? (fatal ? 'error' : 'loading'))}>
       <div className="display-in">{content}</div>
-      {status === 'reconnecting' && display ? (
+      {status === 'reconnecting' && display && !expired ? (
         <p className="d-banner" role="status" data-testid="display-banner">
           연결이 끊겼어요. 다시 연결하는 중…
         </p>
       ) : null}
-      {fullscreen.supported && fatal === null ? (
+      {fullscreen.supported && fatal === null && !expired && !limit ? (
         <button
           type="button"
           className="d-fs"

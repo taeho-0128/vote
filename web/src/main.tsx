@@ -8,6 +8,7 @@ import './styles/vote.css';
 import './styles/fold.css';
 import './styles/results.css';
 import './styles/display.css';
+import './styles/print.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root is missing from index.html');

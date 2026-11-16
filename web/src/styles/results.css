@@ -388,6 +388,7 @@
 
 .results-stage {
   aspect-ratio: 1 / 1.1;
+  max-height: max(300px, calc(100dvh - 180px));
   border-radius: var(--r-lg);
   overflow: hidden;
   box-shadow: var(--shadow-1);
@@ -468,13 +469,28 @@
 }
 
 .results-pos {
-  min-width: 4.6em;
+  min-width: 3.4em;
   font-family: var(--f-display);
   font-size: 24px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
   text-align: center;
   white-space: nowrap;
+}
+
+@media (max-width: 380px) {
+  .results-nav {
+    gap: 6px;
+  }
+
+  .results-nav .btn {
+    padding: 0 8px;
+    font-size: 16px;
+  }
+
+  .results-pos {
+    font-size: 20px;
+  }
 }
 
 .results-side {
@@ -507,6 +523,7 @@
 .results:fullscreen .results-stage {
   flex: 1;
   min-height: 0;
+  max-height: none;
   aspect-ratio: auto;
 }
 
@@ -529,6 +546,7 @@
   .results-stage {
     flex: 1;
     min-height: 0;
+    max-height: none;
     aspect-ratio: auto;
   }
 
@@ -603,4 +621,84 @@
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* ---------- 내보내기와 폰의 설정 접기 ---------- */
+.export-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.export-panel .lbl {
+  margin-bottom: 8px;
+}
+
+.export-done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  color: var(--brand);
+  font-weight: 800;
+}
+
+.settings {
+  padding: 0;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 16px;
+  border-radius: var(--r-lg);
+  text-align: left;
+}
+
+.settings-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-name b {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.settings-name small {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.settings-toggle .ic {
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.settings-toggle[aria-expanded='true'] .ic {
+  transform: rotate(180deg);
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 16px 12px;
+  border-top: 1px solid var(--chip-line);
+}
+
+.settings-body[hidden] {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .results:fullscreen .results-nav .btn {
+    padding: 0 8px;
+    font-size: 16px;
+  }
 }

@@ -17,6 +17,13 @@ body {
   line-height: 1.55;
   caret-color: var(--caret);
   -webkit-font-smoothing: antialiased;
+  /* Korean breaks between words, not inside them. A string with no space still wraps rather than push the page wider. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
+textarea {
+  word-break: normal;
 }
 
 ::selection {

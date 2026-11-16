@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { ClientMsg, ErrorReason, HostView } from '../../../shared/protocol.ts';
 import { Composer } from '../components/Composer.tsx';
@@ -7,6 +7,10 @@ import { AppBar, ConnectionBanner, Notice } from '../components/Frame.tsx';
 import { HostActions } from '../components/HostActions.tsx';
 import type { HostMode } from '../components/HostActions.tsx';
 import { DisplayDialog } from '../components/DisplayDialog.tsx';
+import { ExpiryBanner } from '../components/ExpiryBanner.tsx';
+import { PrintReport } from '../components/PrintReport.tsx';
+import { RateLimitNotice } from '../components/RateLimitNotice.tsx';
+import { RoomClosed } from '../components/RoomClosed.tsx';
 import { VotingCard } from '../components/HostVoteCards.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { JoinCard } from '../components/JoinCard.tsx';
@@ -15,11 +19,14 @@ import { Roster } from '../components/Roster.tsx';
 import { emptyForm, parseForm } from '../composer.ts';
 import type { DraftForm } from '../composer.ts';
 import { useConnection } from '../connection.ts';
-import { ERROR_COPY, OFFLINE_COPY } from '../messages.ts';
+import { EXPIRY_WARNING_MS } from '../expiry.ts';
+import { ERROR_COPY, EXPORT_COPY, OFFLINE_COPY } from '../messages.ts';
+import { waitSecondsFrom } from '../rateLimit.ts';
 import { clearHostToken, getHostToken } from '../storage.ts';
 import { useCommand, useKeyedState } from '../useCommand.ts';
 import type { Refusal } from '../useCommand.ts';
 import { useMediaQuery, WIDE } from '../useMediaQuery.ts';
+import { useVoteExport } from '../useVoteExport.ts';
 
 // Every other error answers a command, and the screen stays where it is.
 const IDENTITY_ERRORS: ReadonlySet<ErrorReason> = new Set(['bad_host_token', 'room_not_found']);
@@ -32,26 +39,43 @@ const stageKeyOf = (host: HostView | null): string => {
 };
 
 // Moving through the results settles nothing a command waits on, so a refusal clears the moment the reveal moves on.
+// Keeping the room alive settles when the view that follows is no longer inside the warning.
 const settleKeyOf = (host: HostView | null): string => {
-  const base = stageKeyOf(host);
+  const base = `${stageKeyOf(host)}:${host && host.expiresInMs < EXPIRY_WARNING_MS ? 'low' : 'ok'}`;
   if (host?.stage.kind !== 'closed') return base;
   const { cursor, mode, hidden } = host.stage.reveal;
   return `${base}:${cursor}:${mode}:${hidden}`;
 };
 
+interface Limit {
+  readonly id: number;
+  readonly seconds: number;
+}
+
 export function HostScreen({ code }: { code: string }) {
   const [hasToken] = useState(() => getHostToken(code) !== null);
   const [fatal, setFatal] = useState<ErrorReason | null>(null);
+  const [limit, setLimit] = useState<Limit | null>(null);
+  const [generation, setGeneration] = useState(0);
   const wide = useMediaQuery(WIDE);
 
-  const { status, view, send } = useConnection({
+  const { status, view, expired, send } = useConnection({
     enabled: hasToken && fatal === null,
+    generation,
     hello: (): ClientMsg | null => {
       const hostToken = getHostToken(code);
       return hostToken ? { t: 'resumeHost', code, hostToken } : null;
     },
     onMessage: (msg) => {
       if (msg.t !== 'error') return;
+      if (msg.reason === 'rate_limited') {
+        setLimit((current) => ({ id: (current?.id ?? 0) + 1, seconds: waitSecondsFrom(msg.message) }));
+        return;
+      }
+      if (msg.reason === 'room_expired') {
+        clearHostToken(code);
+        return;
+      }
       if (!IDENTITY_ERRORS.has(msg.reason)) {
         command.refuse(msg.reason);
         return;
@@ -67,6 +91,27 @@ export function HostScreen({ code }: { code: string }) {
   const [displayOpen, setDisplayOpen] = useState(false);
   const [form, setForm] = useKeyedState<DraftForm | null>(stageKey, null);
   const [confirmingClose, setConfirmingClose] = useKeyedState(stageKey, false);
+  const [confirmingDismiss, setConfirmingDismiss] = useKeyedState(stageKey, false);
+  const [fullscreenActive, setFullscreenActive] = useState(false);
+  const closedStage = host?.stage.kind === 'closed' ? host.stage : null;
+  const exporter = useVoteExport(code, closedStage);
+  const deadline = useMemo(() => (host ? performance.now() + host.expiresInMs : null), [host]);
+
+  if (expired) return <RoomClosed role="host" />;
+
+  if (limit) {
+    return (
+      <RateLimitNotice
+        key={limit.id}
+        seconds={limit.seconds}
+        surface="page"
+        onRetry={() => {
+          setLimit(null);
+          setGeneration((value) => value + 1);
+        }}
+      />
+    );
+  }
 
   if (!hasToken || fatal !== null) {
     return (
@@ -99,6 +144,11 @@ export function HostScreen({ code }: { code: string }) {
   const dismissVote = () => {
     if (stage?.kind === 'closed') run({ t: 'dismissVote', voteId: stage.vote.id });
   };
+  // A vote with papers that never left this browser is lost for good once the next one starts.
+  const unexported = stage?.kind === 'closed' && stage.ballotCount > 0 && !exporter.exported;
+  const keepAlive = () => run({ t: 'keepAlive' });
+  const expiry =
+    deadline === null ? null : <ExpiryBanner deadline={deadline} unexported={unexported} busy={command.busy} onKeep={keepAlive} />;
 
   const actions = host ? (
     <HostActions
@@ -109,7 +159,7 @@ export function HostScreen({ code }: { code: string }) {
       onCancelCompose={() => setForm(null)}
       onStart={startVote}
       onClose={() => (pending > 0 ? setConfirmingClose(true) : closeVote())}
-      onDismiss={dismissVote}
+      onDismiss={() => (unexported ? setConfirmingDismiss(true) : dismissVote())}
       onOpenDisplay={() => setDisplayOpen(true)}
     />
   ) : null;
@@ -135,6 +185,7 @@ export function HostScreen({ code }: { code: string }) {
       </AppBar>
       <div className="banners">
         <ConnectionBanner status={status} />
+        {fullscreenActive ? null : expiry}
         {wide && refusal ? (
           <div className="banner banner--error">
             <div className="banner-in">{refusal}</div>
@@ -150,6 +201,9 @@ export function HostScreen({ code }: { code: string }) {
           send={send}
           command={command}
           refusal={refusal}
+          exporter={exporter}
+          notice={expiry}
+          onFullscreenChange={setFullscreenActive}
         />
       ) : host ? (
         <main className="host-main">
@@ -194,6 +248,56 @@ export function HostScreen({ code }: { code: string }) {
           onClose={() => setDisplayOpen(false)}
         />
       ) : null}
+      <ConfirmDialog
+        open={confirmingDismiss}
+        title={EXPORT_COPY.confirmTitle}
+        testId="export-confirm"
+        onCancel={() => setConfirmingDismiss(false)}
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn"
+              data-testid="export-confirm-csv"
+              onClick={() => {
+                setConfirmingDismiss(false);
+                exporter.csv();
+              }}
+            >
+              <Icon name="download" />
+              {EXPORT_COPY.csv}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              data-testid="export-confirm-pdf"
+              onClick={() => {
+                setConfirmingDismiss(false);
+                exporter.pdf();
+              }}
+            >
+              <Icon name="print" />
+              {EXPORT_COPY.pdf}
+            </button>
+            <button
+              type="button"
+              className="btn ghost"
+              data-testid="export-confirm-skip"
+              onClick={() => {
+                setConfirmingDismiss(false);
+                dismissVote();
+              }}
+            >
+              {EXPORT_COPY.confirmSkip}
+            </button>
+          </>
+        }
+      >
+        <p className="confirm-body">
+          {EXPORT_COPY.confirmBody(stage?.kind === 'closed' ? stage.ballotCount : 0)}
+        </p>
+      </ConfirmDialog>
+      {exporter.report ? <PrintReport source={exporter.report} /> : null}
       <ConfirmDialog
         open={confirmingClose}
         title={pending > 0 ? `아직 ${pending}명이 안 냈어요. 지금 마감할까요?` : '모두 제출했어요. 지금 마감할까요?'}

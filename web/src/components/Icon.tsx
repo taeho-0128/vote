@@ -44,6 +44,20 @@ const PATHS = {
   right: <path d="M9 5l7 7-7 7" />,
   expand: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
   shrink: <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />,
+  down: <path d="M6 9l6 6 6-6" />,
+  download: (
+    <>
+      <path d="M12 4v11M7.5 11L12 15.5 16.5 11" />
+      <path d="M5 19.5h14" />
+    </>
+  ),
+  print: (
+    <>
+      <path d="M7 9V4h10v5" />
+      <path d="M7 17H5.5A1.5 1.5 0 014 15.5V11a2 2 0 012-2h12a2 2 0 012 2v4.5a1.5 1.5 0 01-1.5 1.5H17" />
+      <path d="M7 14h10v6H7z" />
+    </>
+  ),
   eyeoff: (
     <>
       <path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z" />

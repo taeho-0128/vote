@@ -6,10 +6,11 @@ import type { StageFace } from '../stageMachine.ts';
 import { useFullscreen } from '../useFullscreen.ts';
 import { useIntent } from '../useIntent.ts';
 import type { useCommand } from '../useCommand.ts';
+import type { VoteExport } from '../useVoteExport.ts';
 import { Icon } from './Icon.tsx';
 import { PaperStage } from './PaperStage.tsx';
 import type { StageIds } from './PaperStage.tsx';
-import { Switch } from './Switch.tsx';
+import { ResultsSide } from './ResultsSide.tsx';
 import { TallyGraph } from './TallyGraph.tsx';
 import type { GraphIds } from './TallyGraph.tsx';
 import { Tags } from './HostVoteCards.tsx';
@@ -44,9 +45,13 @@ interface ResultsViewProps {
   send: (msg: ClientMsg) => boolean;
   command: ReturnType<typeof useCommand>;
   refusal: ReactNode;
+  exporter: VoteExport;
+  // Anything the host must not miss while the results area covers the whole screen. Shown only in fullscreen.
+  notice: ReactNode;
+  onFullscreenChange: (active: boolean) => void;
 }
 
-export function ResultsView({ stage, wide, online, send, command, refusal }: ResultsViewProps) {
+export function ResultsView({ stage, wide, online, send, command, refusal, exporter, notice, onFullscreenChange }: ResultsViewProps) {
   const { vote, reveal } = stage;
   const { ballots } = reveal;
   const total = ballots.length;
@@ -54,6 +59,10 @@ export function ResultsView({ stage, wide, online, send, command, refusal }: Res
   const choice = vote.paper.kind === 'choice';
   const area = useRef<HTMLElement>(null);
   const fullscreen = useFullscreen(area);
+  useEffect(() => {
+    onFullscreenChange(fullscreen.active);
+    return () => onFullscreenChange(false);
+  }, [fullscreen.active]);
   const [showAuthor, setShowAuthor] = useState(false);
 
   const resetKey = `${online}|${command.refusal ?? ''}`;
@@ -216,7 +225,7 @@ export function ResultsView({ stage, wide, online, send, command, refusal }: Res
           이전
         </button>
         <output className="results-pos" data-testid="result-position">
-          {reveal.cursor + 1} / {total}
+          {reveal.cursor < 0 ? '-' : reveal.cursor + 1} / {total}
         </output>
         <button type="button" className="btn" data-testid="result-next" disabled={cursor >= total - 1} onClick={() => move(1)}>
           다음 용지
@@ -260,33 +269,22 @@ export function ResultsView({ stage, wide, online, send, command, refusal }: Res
           </p>
         ) : null}
         {nav}
+        {fullscreen.active ? notice : null}
         {fullscreen.active ? refusal : null}
       </section>
       {total > 0 ? (
-        <aside className="results-side" aria-label="공개 설정">
-          <section className="panel">
-            <h2 className="lbl">공개 설정</h2>
-            <Switch testId="toggle-hidden" label="대화면 가리기" hint="켜면 대화면에는 접힌 용지만 보여요." checked={hidden} onChange={hide} />
-            {anonymous ? (
-              <Switch
-                testId="toggle-author"
-                label="작성자 보기"
-                hint="이 화면에서만 보여요. 대화면에는 나오지 않아요."
-                checked={showAuthor}
-                onChange={setShowAuthor}
-              />
-            ) : null}
-          </section>
-          {choice && reveal.mode === 'one' ? (
-            <section className="panel">
-              <button type="button" className="btn ghost" data-testid="reveal-all" onClick={showAll}>
-                전체 공개
-              </button>
-              <p className="hint">보기별 득표 그래프를 한꺼번에 보여줘요.</p>
-            </section>
-          ) : null}
-          {wide ? null : fullscreenButton}
-        </aside>
+        <ResultsSide
+          wide={wide}
+          anonymous={anonymous}
+          hidden={hidden}
+          onHidden={hide}
+          showAuthor={showAuthor}
+          onShowAuthor={setShowAuthor}
+          canRevealAll={choice && reveal.mode === 'one'}
+          onRevealAll={showAll}
+          exporter={exporter}
+          fullscreenButton={wide || fullscreen.active ? null : fullscreenButton}
+        />
       ) : null}
     </main>
   );

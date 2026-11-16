@@ -9,7 +9,11 @@ export type ParticipantRecord = z.infer<typeof participantRecordSchema>;
 const hostKey = (code: string) => `hanpyo:host:${code}`;
 const participantKey = (code: string) => `hanpyo:participant:${code}`;
 const ballotKey = (voteId: string) => `hanpyo:ballot:${voteId}`;
+const exportedKey = (code: string, voteId: string) => `hanpyo:exported:${code}:${voteId}`;
 const LAST_NICKNAME_KEY = 'hanpyo:nickname';
+
+// Backs the flag up when storage is blocked, so a vote exported in this tab is not asked about again until a reload.
+const exportedHere = new Set<string>();
 
 // Storage can be blocked or throw (private mode, disabled site data). Every call degrades to "nothing stored".
 function read(key: string): string | null {
@@ -76,3 +80,11 @@ export function getBallotDraft(voteId: string): StoredDraft | null {
 export const setBallotDraft = (voteId: string, draft: BallotDraft): void =>
   write(ballotKey(voteId), JSON.stringify(storableDraft(draft)));
 export const clearBallotDraft = (voteId: string): void => remove(ballotKey(voteId));
+
+export const wasExported = (code: string, voteId: string): boolean =>
+  exportedHere.has(exportedKey(code, voteId)) || read(exportedKey(code, voteId)) !== null;
+
+export function markExported(code: string, voteId: string): void {
+  exportedHere.add(exportedKey(code, voteId));
+  write(exportedKey(code, voteId), '1');
+}

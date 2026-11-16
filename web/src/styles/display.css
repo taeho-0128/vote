@@ -222,7 +222,7 @@
 .d-sub,
 .d-line,
 .d-note {
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
   text-wrap: balance;
   word-break: keep-all;
 }
@@ -290,6 +290,7 @@
 /* 마감 뒤 */
 .d-closed {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: calc(var(--u) * 2);
 }
@@ -311,6 +312,14 @@
   overflow: hidden;
 }
 
+.d-title--small[data-size='m'] {
+  font-size: max(19px, calc(var(--u) * 3));
+}
+
+.d-title--small[data-size='s'] {
+  font-size: max(18px, calc(var(--u) * 2.6));
+}
+
 .d-head .d-meta {
   flex: none;
 }
@@ -325,6 +334,13 @@
 
 .display .rstage-in {
   --pw: min(62cqw, 71cqh);
+}
+
+/* Held upright, the stage is narrow: a smaller paper leaves the side pile a clear margin instead of tucking it under the paper. */
+@container (max-aspect-ratio: 4/5) {
+  .display .rstage-in {
+    --pw: min(56cqw, 62cqh);
+  }
 }
 
 .d-center {
@@ -412,4 +428,21 @@
 .d-fs:hover,
 .d-fs:focus-visible {
   opacity: 1;
+}
+
+.d-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: calc(var(--u) * 2);
+  color: var(--stage-ink);
+  font-size: max(16px, calc(var(--u) * 2));
+  font-weight: 700;
+  text-underline-offset: 4px;
+}
+
+.d-retry {
+  margin-top: calc(var(--u) * 2);
+  background: var(--stage-ink);
+  color: var(--brand);
 }
