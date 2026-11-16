@@ -60,6 +60,7 @@ export function createFakeRoom() {
     ballots: new Map(),
     reveal: null,
     received: [],
+    pings: [],
     refuseNext: null,
     latency: 0,
     expiresIn: SIX_HOURS_MS,
@@ -278,6 +279,10 @@ export function createFakeRoom() {
       });
       ws.onMessage((raw) => {
         const msg = JSON.parse(String(raw));
+        if (msg.t === 'ping') {
+          room.pings.push(sock.role);
+          return send(sock, { t: 'pong' });
+        }
         if (msg.t === 'resumeHost' || msg.t === 'watch' || msg.t === 'join') {
           room.helloAttempts += 1;
           if (room.limitHello !== null) return fail('rate_limited', room.limitHello);
