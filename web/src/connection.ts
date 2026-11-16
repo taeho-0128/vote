@@ -4,6 +4,9 @@ import type { ClientMsg, ErrorReason, ServerMsg, View } from '../../shared/proto
 
 export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
+// A pong only keeps the connection busy, so no screen is ever shown one.
+export type SessionMsg = Exclude<ServerMsg, { t: 'pong' }>;
+
 export interface ConnectionOptions {
   enabled?: boolean;
   // Bumped to open a fresh socket after the connection stopped on purpose, such as once a rate limit has run out.
@@ -35,7 +38,91 @@ const STOPS_CONNECTION: ReadonlySet<ErrorReason> = new Set(['replaced', 'room_ex
 const BACKOFF_START_MS = 500;
 const BACKOFF_MAX_MS = 5000;
 
+// A free host sleeps after 15 minutes without inbound traffic and drops every room (D-41), and the server's own ping
+// frames may not count. An open socket sends a ping this often, which stays well under that even in a throttled tab.
+export const PING_INTERVAL_MS = 4 * 60_000;
+
 const socketUrl = (): string => `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+
+export interface SessionHandlers {
+  createSocket: () => WebSocket;
+  hello: () => ClientMsg | null;
+  onSocket: (socket: WebSocket | null) => void;
+  onStatus: (status: ConnectionStatus) => void;
+  onMessage: (msg: SessionMsg) => void;
+}
+
+// One browser connection and its reconnects. Returns what tears all of it down, the ping timer included.
+export function openSession({ createSocket, hello, onSocket, onStatus, onMessage }: SessionHandlers): () => void {
+  let stopped = false;
+  let attempt = 0;
+  let live: WebSocket | undefined;
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  let pingTimer: ReturnType<typeof setInterval> | undefined;
+  onStatus('connecting');
+
+  const connect = () => {
+    const socket = createSocket();
+    live = socket;
+    onSocket(socket);
+
+    socket.onopen = () => {
+      onStatus('open');
+      const first = hello();
+      if (first) socket.send(JSON.stringify(first));
+      clearInterval(pingTimer);
+      pingTimer = setInterval(() => {
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ t: 'ping' } satisfies ClientMsg));
+      }, PING_INTERVAL_MS);
+    };
+
+    socket.onmessage = (event) => {
+      let json: unknown;
+      try {
+        json = JSON.parse(String(event.data));
+      } catch {
+        return;
+      }
+      const parsed = serverMsgSchema.safeParse(json);
+      if (!parsed.success) return;
+      const msg = parsed.data;
+      // A valid message proves the server is alive, so only now does the backoff start over. A pong is one.
+      attempt = 0;
+      if (msg.t === 'pong') return;
+      if (msg.t === 'error' && STOPS_CONNECTION.has(msg.reason)) {
+        stopped = true;
+        clearTimeout(reconnectTimer);
+        onStatus('closed');
+        socket.close();
+      }
+      onMessage(msg);
+    };
+
+    socket.onclose = () => {
+      clearInterval(pingTimer);
+      if (stopped) return;
+      live = undefined;
+      onSocket(null);
+      onStatus('reconnecting');
+      const delay = Math.min(BACKOFF_START_MS * 2 ** attempt, BACKOFF_MAX_MS);
+      attempt += 1;
+      reconnectTimer = setTimeout(connect, delay);
+    };
+  };
+
+  connect();
+
+  return () => {
+    stopped = true;
+    clearTimeout(reconnectTimer);
+    clearInterval(pingTimer);
+    onSocket(null);
+    if (live) {
+      live.onopen = live.onmessage = live.onclose = null;
+      live.close();
+    }
+  };
+}
 
 export function useConnection({ enabled = true, generation = 0, hello, onMessage }: ConnectionOptions): Connection {
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
@@ -52,69 +139,22 @@ export function useConnection({ enabled = true, generation = 0, hello, onMessage
 
   useEffect(() => {
     if (!enabled) return;
-    let stopped = false;
-    let attempt = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    setStatus('connecting');
-
-    const connect = () => {
-      const socket = new WebSocket(socketUrl());
-      socketRef.current = socket;
-
-      socket.onopen = () => {
-        setStatus('open');
-        const first = helloRef.current();
-        if (first) socket.send(JSON.stringify(first));
-      };
-
-      socket.onmessage = (event) => {
-        let json: unknown;
-        try {
-          json = JSON.parse(String(event.data));
-        } catch {
-          return;
-        }
-        const parsed = serverMsgSchema.safeParse(json);
-        if (!parsed.success) return;
-        const msg = parsed.data;
-        // A valid message proves the server is alive, so only now does the backoff start over.
-        attempt = 0;
-        if (msg.t === 'error' && STOPS_CONNECTION.has(msg.reason)) {
-          stopped = true;
-          clearTimeout(timer);
-          setStatus('closed');
-          socket.close();
-        }
+    return openSession({
+      createSocket: () => new WebSocket(socketUrl()),
+      hello: () => helloRef.current(),
+      onSocket: (socket) => {
+        socketRef.current = socket;
+      },
+      onStatus: setStatus,
+      onMessage: (msg) => {
         onMessageRef.current?.(msg);
         if (msg.t !== 'error') setView(msg.view);
         else if (msg.reason === 'room_expired') {
           setExpired(true);
           setView(null);
         } else if (IDENTITY_REJECTED.has(msg.reason)) setView(null);
-      };
-
-      socket.onclose = () => {
-        if (stopped) return;
-        socketRef.current = null;
-        setStatus('reconnecting');
-        const delay = Math.min(BACKOFF_START_MS * 2 ** attempt, BACKOFF_MAX_MS);
-        attempt += 1;
-        timer = setTimeout(connect, delay);
-      };
-    };
-
-    connect();
-
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-      const socket = socketRef.current;
-      socketRef.current = null;
-      if (socket) {
-        socket.onopen = socket.onmessage = socket.onclose = null;
-        socket.close();
-      }
-    };
+      },
+    });
   }, [enabled, generation]);
 
   const send = useCallback((msg: ClientMsg): boolean => {
