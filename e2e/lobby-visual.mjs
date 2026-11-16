@@ -73,7 +73,7 @@ async function runWidth(browser, size) {
   const bottomActions = await hostPage.locator('.bar-bottom .btn').count();
   check(`host ${tag}: actions in ${width >= 1024 ? 'top bar' : 'bottom bar'} only`, width >= 1024 ? topActions === 2 && bottomActions === 0 : bottomActions === 2 && topActions === 0, `${topActions}/${bottomActions}`);
   const disabled = await hostPage.locator('button:disabled').allInnerTexts();
-  check(`host ${tag}: only the big-screen action is disabled in the lobby`, disabled.length === 1 && disabled[0] === '대화면 열기', disabled.join(','));
+  check(`host ${tag}: no action is disabled in the lobby, the big-screen one opens`, disabled.length === 0 && (await byId(hostPage, 'open-display').isEnabled()), disabled.join(','));
   check(`host ${tag}: open-composer enabled`, await byId(hostPage, 'open-composer').isEnabled());
   check(`host ${tag}: lobby roster items carry data-submitted=false`, (await hostPage.locator('[data-testid="roster-item"][data-submitted="false"]').count()) === (await byId(hostPage, 'roster-item').count()));
   await shot(hostPage, 'host-lobby', width);

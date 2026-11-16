@@ -148,7 +148,7 @@ export async function runVoteWalk(browser, size) {
   check(`host ${tag}: refusal cleared once the vote started`, (await count(host, 'command-error')) === 0);
   check(`host ${tag}: voting shows the title`, (await text(host, 'vote-heading')) === '이번 달 MVP는 누구인가요?');
   check(`host ${tag}: submitted-count is exactly "0 / 16"`, (await text(host, 'submitted-count')) === '0 / 16', await text(host, 'submitted-count'));
-  check(`host ${tag}: voting actions`, (await count(host, 'close-vote')) === 1 && (await count(host, 'open-composer')) === 0 && (await count(host, 'start-vote')) === 0 && (await host.locator('button:disabled').allInnerTexts()).join() === '대화면 열기');
+  check(`host ${tag}: voting actions`, (await count(host, 'close-vote')) === 1 && (await count(host, 'open-composer')) === 0 && (await count(host, 'start-vote')) === 0 && (await host.locator('button:disabled').count()) === 0 && (await byId(host, 'open-display').isEnabled()));
   check(`host ${tag}: every roster item has data-submitted`, (await host.locator('[data-testid="roster-item"]:not([data-submitted])').count()) === 0);
   check(`host ${tag}: join QR still reachable while voting`, (await count(host, 'join-fold')) === 1);
 
@@ -237,10 +237,9 @@ export async function runVoteWalk(browser, size) {
   await byId(host, 'confirm-close').click();
   await byId(host, 'closed-count').waitFor();
   check(`host ${tag}: closed shows the ballot count as a bare number`, (await text(host, 'closed-count')) === '10', await text(host, 'closed-count'));
-  const closedText = (await host.textContent('main')) ?? '';
-  check(`host ${tag}: closed copy`, closedText.includes('마감했어요') && closedText.includes('장이 모였어요') && closedText.includes('결과 보기는 다음 단계에서 열려요'));
+  check(`host ${tag}: closed opens the results at the folded pile`, (await text(host, 'result-position')) === '0 / 10' && (await count(host, 'result-pile')) === 1);
   check(`host ${tag}: closed actions`, (await count(host, 'dismiss-vote')) === 1 && (await count(host, 'close-vote')) === 0 && (await count(host, 'command-error')) === 0);
-  check(`host ${tag}: roster keeps data-submitted once closed`, (await host.locator('[data-submitted="true"]').count()) === 10 && (await host.locator('[data-submitted="false"]').count()) === 7);
+  check(`host ${tag}: the results screen replaces the roster`, (await count(host, 'roster')) === 0);
   await noHorizontalScroll(host, `host closed ${tag}`);
   await shot(host, 'vote-host-closed', width);
 

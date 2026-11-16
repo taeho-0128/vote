@@ -1,11 +1,24 @@
 // A scripted stand-in for the WebSocket server, installed per page with page.routeWebSocket.
 // It follows the contract in shared/protocol.ts closely enough to drive the real screens, and it can be told to
-// refuse the next command so the refusal paths can be walked.
+// refuse the next command so the refusal paths can be walked. Its display view is built by one function that follows the
+// real server's privacy rules: only the paper at the cursor, a signature only for a named vote, and no tally while hidden.
 import { ballotContentSchema, normalizeBallotContent } from '../shared/vote.ts';
 
 const NAMES = ['민준', '서연', '지후', '도윤', '예은', '시우', '하린', '주원', '채원', '지안', '이안', '유나'];
 const MANY = ['가온', '은우', '세아', '윤호', '지민', '재이', '아린', '단우', '해든', '나래', '보람', '시현', '예준', '라온', '한결', '새봄', '도하', '이레', '우진', '설아', '찬영', '미르', '다인', '건우', '수아', '로운', '태오', '다온', '나은', '현우', '소율', '준서', '유빈', '하준', '서윤', '지율', '이든', '다솔', '별이'];
 const pad = (s) => s.padEnd(24, 'x');
+
+// A fixed shuffle so a walk knows which paper comes up at each position without reading the page.
+function shuffled(ids, seed = 7) {
+  const out = [...ids];
+  let state = seed;
+  for (let i = out.length - 1; i > 0; i--) {
+    state = (state * 1103515245 + 12345) & 0x7fffffff;
+    const j = state % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
 const length = (s) => [...s].length;
 
 function draftProblem(draft) {
@@ -35,6 +48,7 @@ export function createFakeRoom() {
   const room = {
     code: '4827',
     hostToken: pad('host-token-'),
+    displayToken: pad('display-token-'),
     participants: [...NAMES.map((n) => person(n)), person('소율', false), person('가나다라마바사아')],
     sockets: new Set(),
     connections: 0,
@@ -43,17 +57,54 @@ export function createFakeRoom() {
     stage: 'lobby',
     vote: null,
     ballots: new Map(),
+    reveal: null,
     received: [],
     refuseNext: null,
     latency: 0,
   };
 
   const summaries = () => room.participants.map(({ id, nickname, connected }) => ({ id, nickname, connected }));
-  const send = (sock, msg) => sock.ws.send(JSON.stringify(msg));
+  const send = (sock, msg) => {
+    const raw = JSON.stringify(msg);
+    if (sock.role === 'display') room.displayFrames.push(raw);
+    sock.ws.send(raw);
+  };
+  const openReveal = () => (room.reveal ??= { order: shuffled([...room.ballots.keys()]), cursor: -1, mode: 'one', hidden: false });
+  const nicknameOf = (id) => room.participants.find((p) => p.id === id)?.nickname ?? '알 수 없음';
+  const orderedBallots = () => openReveal().order.map((id) => ({ id, content: room.ballots.get(id) }));
+  const tallyOf = () => {
+    const counts = room.vote.paper.options.map(() => 0);
+    for (const { content } of orderedBallots()) if (content.kind === 'choice') counts[content.optionIndex] += 1;
+    return counts;
+  };
   const hostStage = () => {
     if (room.stage === 'lobby') return { kind: 'lobby' };
     if (room.stage === 'voting') return { kind: 'voting', vote: room.vote, submittedCount: room.ballots.size };
-    return { kind: 'closed', vote: room.vote, ballotCount: room.ballots.size };
+    const { cursor, mode, hidden } = openReveal();
+    const ballots = orderedBallots().map(({ id, content }) => ({ id, content, author: { id, nickname: nicknameOf(id) } }));
+    return { kind: 'closed', vote: room.vote, ballotCount: room.ballots.size, reveal: { cursor, mode, hidden, ballots } };
+  };
+  const displayStage = () => {
+    if (room.stage === 'lobby') return { kind: 'lobby', participants: summaries() };
+    if (room.stage === 'voting') {
+      return { kind: 'voting', vote: room.vote, submittedCount: room.ballots.size, participantCount: room.participants.length };
+    }
+    const { cursor, mode, hidden } = openReveal();
+    const ordered = orderedBallots();
+    const open = cursor >= 0 && !hidden ? ordered[cursor] : undefined;
+    const signed = room.vote.anonymity === 'named';
+    return {
+      kind: 'closed',
+      vote: room.vote,
+      reveal: {
+        cursor,
+        total: ordered.length,
+        mode,
+        hidden,
+        current: open ? { content: open.content, signature: signed ? nicknameOf(open.id) : null } : null,
+        tally: mode === 'all' && !hidden ? tallyOf() : null,
+      },
+    };
   };
   const participantStage = (id) => {
     if (room.stage === 'lobby') return { kind: 'lobby' };
@@ -62,8 +113,9 @@ export function createFakeRoom() {
   const viewFor = (sock) => {
     if (sock.role === 'host') {
       const participants = summaries().map((p) => ({ ...p, submitted: room.ballots.has(p.id) }));
-      return { role: 'host', code: room.code, stage: hostStage(), participants };
+      return { role: 'host', code: room.code, displayToken: room.displayToken, stage: hostStage(), participants };
     }
+    if (sock.role === 'display') return { role: 'display', code: room.code, stage: displayStage() };
     const me = room.participants.find((p) => p.id === sock.id);
     return {
       role: 'participant',
@@ -110,6 +162,9 @@ export function createFakeRoom() {
     room.broadcast();
   };
   room.ballotOf = (nickname) => room.ballots.get(room.participants.find((p) => p.nickname === nickname)?.id);
+  room.displays = () => [...room.sockets].filter((sock) => sock.role === 'display').length;
+  // Everything the display sockets were last sent, for checks that nothing leaks onto a public screen.
+  room.displayFrames = [];
   room.commands = (type) => room.received.filter((m) => m.t === type);
 
   const handleCommand = (sock, msg, fail) => {
@@ -133,6 +188,22 @@ export function createFakeRoom() {
       if (room.stage !== 'voting') return fail('wrong_stage');
       if (msg.voteId !== room.vote.id) return fail('stale_vote');
       room.stage = 'closed';
+      room.reveal = null;
+      openReveal();
+    } else if (msg.t === 'revealMove' || msg.t === 'revealMode' || msg.t === 'setHidden') {
+      if (sock.role !== 'host') return fail('not_host');
+      if (room.stage !== 'closed') return fail('wrong_stage');
+      if (msg.voteId !== room.vote.id) return fail('stale_vote');
+      if (msg.t === 'revealMove') {
+        const inRange = Number.isInteger(msg.cursor) && msg.cursor >= -1 && msg.cursor < room.reveal.order.length;
+        if (room.reveal.mode !== 'one' || !inRange) return fail('bad_reveal');
+        room.reveal.cursor = msg.cursor;
+      } else if (msg.t === 'revealMode') {
+        if (msg.mode === 'all' && room.vote.paper.kind !== 'choice') return fail('bad_reveal');
+        room.reveal.mode = msg.mode;
+      } else {
+        room.reveal.hidden = msg.hidden;
+      }
     } else if (msg.t === 'dismissVote') {
       if (sock.role !== 'host') return fail('not_host');
       if (room.stage !== 'closed') return fail('wrong_stage');
@@ -140,6 +211,7 @@ export function createFakeRoom() {
       room.stage = 'lobby';
       room.vote = null;
       room.ballots = new Map();
+      room.reveal = null;
     } else if (msg.t === 'submitBallot') {
       if (sock.role !== 'participant') return fail('not_bound');
       if (room.stage !== 'voting') return fail('wrong_stage');
@@ -180,6 +252,11 @@ export function createFakeRoom() {
           room.hostResumes += 1;
           sock.role = 'host';
           send(sock, { t: 'view', view: viewFor(sock) });
+        } else if (msg.t === 'watch') {
+          if (msg.code !== room.code) return fail('room_not_found');
+          if (msg.displayToken !== room.displayToken) return fail('bad_display_token');
+          sock.role = 'display';
+          send(sock, { t: 'watching', view: viewFor(sock) });
         } else if (msg.t === 'join') {
           if (msg.code !== room.code) return fail('room_not_found');
           let me = msg.participantToken ? room.participants.find((p) => p.token === msg.participantToken) : undefined;

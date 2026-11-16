@@ -38,6 +38,19 @@ export async function startVite() {
   throw new Error('vite did not start on 5173');
 }
 
+// Starts vite through node itself, so the process the walk kills is vite and not a shell wrapped around it.
+export async function startViteNode() {
+  if (await isUp()) return null;
+  const bin = path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
+  const child = spawn(process.execPath, [bin, '--port', '5173', '--strictPort'], { cwd: ROOT, stdio: 'ignore' });
+  for (let i = 0; i < 60; i++) {
+    if (await isUp()) return child;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  child.kill();
+  throw new Error('vite did not start on 5173');
+}
+
 export const stopVite = (child) => {
   if (!child) return;
   try {
