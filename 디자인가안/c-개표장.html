@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko" data-theme="c">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>가안 C · 개표장 · 한 표 디자인 가안</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@700;800&family=Nanum+Pen+Script&family=Noto+Sans+KR:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="mock.css">
+<link rel="stylesheet" href="theme-c.css">
+</head>
+<body data-anon="true">
+<main class="page">
+  <header class="head">
+    <div class="lead">
+      <a class="back" href="index.html">← 가안 목록</a>
+      <h1>가안 C · 개표장</h1>
+      <p>불 꺼진 방의 개표 현장입니다. 대화면에서는 용지 한 장에만 조명이 들어오고, 객관식 결과는 正 자 획이 한 줄씩 그어집니다. 투표함은 붉은 칠기예요.</p>
+    </div>
+    <div class="ctl">
+      <div class="seg" role="radiogroup" aria-label="공개 방식 미리보기"><label><input type="radio" name="anon-head" value="0" checked><span>익명 투표</span></label><label><input type="radio" name="anon-head" value="1"><span>기명 투표</span></label></div>
+      <small>바꾸면 모든 화면의 안내 문구와 서명이 같이 바뀝니다.</small>
+      <nav class="variants" aria-label="가안"><a href="a-투표소.html">가안 A · 투표소</a><a href="b-쪽지.html">가안 B · 쪽지</a><a href="c-개표장.html" aria-current="page">가안 C · 개표장</a></nav>
+    </div>
+  </header>
+  <div id="groups"></div>
+</main>
+<script src="mock.js"></script>
+</body>
+</html>

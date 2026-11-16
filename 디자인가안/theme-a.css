@@ -1,0 +1,49 @@
+/* 가안 A · 투표소: 공공 안내판의 녹색 필드와 선거인 명부의 도장 */
+:root{
+  --page:#e8ebe4;--page-ink:#14211b;--page-ink-2:#46564d;
+  --f-ui:'Noto Sans KR',system-ui,sans-serif;--f-display:'Black Han Sans','Noto Sans KR',sans-serif;--w-display:400;--f-hand:'Nanum Pen Script',cursive;
+  --caret:#1b5e47;--sel:#f5c518;--sel-ink:#14211b;--focus:#0b57d0;
+  --bezel:#1b2420;--screen:#f3f5ef;--ink:#14211b;--ink-2:#46564d;--line:#7f8f84;
+  --field:#fff;--field-ink:#14211b;--pill:#dfe7da;--pill-ink:#14211b;
+  --brand:#1b5e47;--brand-ink:#fff;--accent:#f5c518;--ghost-line:#7f8f84;
+  --panel:#fff;--panel-ink:#14211b;--panel-ink-2:#46564d;--panel-line:#7f8f84;
+  --sw-off:#7f8f84;--sw-on:#1b5e47;--badge:#f5c518;--badge-ink:#14211b;
+  --seg-bg:#dfe5db;--seg-on:#fff;--seg-on-ink:#14211b;--seg-ink:#46564d;
+  --tool:#fff;--tool-ink:#14211b;--tool-on:#1b5e47;--tool-on-ink:#fff;
+  --r:6px;--r-lg:10px;
+  --shadow-1:0 1px 2px rgba(20,33,27,.16),0 2px 6px rgba(20,33,27,.08);
+  --paper:#f8f2e2;--paper-back:#efe7d1;--paper-line:rgba(60,90,130,.26);--paper-ink:#1d2330;
+  --paper-shadow:0 1px 1px rgba(40,30,10,.2),0 8px 18px rgba(40,30,10,.18);
+  --paper-shadow-big:0 .2cqw .4cqw rgba(0,0,0,.25),0 1.2cqw 3cqw rgba(0,0,0,.3);
+  --box-body:#aab5b0;--box-body-2:#869590;--box-lid:#c5cec9;--box-slot:#18211d;--box-label:#1b5e47;--box-label-ink:#fff;--box-r:6px;
+  --chip:#f5c518;--chip-ink:#14211b;--chip-done:#eef1ea;--chip-done-ink:#46564d;
+  --stage:#1b5e47;--stage-ink:#fff;--stage-ink-2:#cfe5d9;--stage-btn:#f5c518;--stage-btn-ink:#14211b;--stage-line:rgba(255,255,255,.6);
+  --stage-chip:rgba(255,255,255,.16);--stage-chip-ink:#fff;--code-bg:#fff;--code-ink:#14211b;--stamp:#c63d2a;
+}
+.sb{background:var(--brand)}
+.appbar{background:var(--brand);color:#fff;margin-bottom:6px}
+.appbar .pill{background:rgba(255,255,255,.18);color:#fff}
+.appbar .hint{color:#dcebe3}
+.title{letter-spacing:.01em}
+.badge{border-radius:var(--r)}
+
+/* 시그니처: 명부에 찍히는 인주 도장 */
+.names{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.names li{border-radius:4px;height:38px;padding-right:10px}
+.names.done li{padding-right:36px}
+.names.done li{box-shadow:inset 0 0 0 1px #d3dacf}
+.names.done li::after{content:'확';position:absolute;right:6px;top:50%;width:25px;height:25px;margin-top:-12.5px;display:grid;place-items:center;border:2px solid var(--stamp);border-radius:50%;color:var(--stamp);font-size:11px;font-weight:900;transform:rotate(-14deg);animation:stamp .5s cubic-bezier(.2,.9,.3,1.4) both}
+.names.done li:nth-child(3n+2)::after{transform:rotate(9deg)}
+@keyframes stamp{from{opacity:0;transform:scale(1.9) rotate(-14deg)}to{opacity:1}}
+.names.todo li::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--ink);margin-right:8px;opacity:.5}
+
+/* 대화면 */
+.s1 .codebox b{box-shadow:var(--shadow-1);border-bottom:.5cqw solid var(--accent)}
+.s2 .reveal::before{content:'';position:absolute;inset:-1cqw 2cqw .6cqw;border-radius:1cqw;background:rgba(0,0,0,.14)}
+.g-a{display:flex;flex-direction:column;justify-content:center;gap:2.4cqw}
+.g-a .r{display:grid;grid-template-columns:13cqw 1fr 7cqw;align-items:center;gap:2cqw}
+.g-a .l{font-family:var(--f-display);font-size:3cqw}
+.g-a .bar{height:4.2cqw;width:var(--w);background:rgba(255,255,255,.88);border-radius:.5cqw;transform-origin:left;animation:grow 1s cubic-bezier(.2,.8,.2,1) both}
+.g-a .win .bar{background:var(--accent)}
+.g-a b{font-family:var(--f-display);font-weight:400;font-size:4cqw;text-align:right;font-variant-numeric:tabular-nums}
+@keyframes grow{from{transform:scaleX(0)}}

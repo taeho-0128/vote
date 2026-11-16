@@ -1,0 +1,49 @@
+/* 가안 C · 개표장: 불 꺼진 방에서 용지 한 장에만 조명이 들어온다 */
+:root{
+  --page:#0b1020;--page-ink:#f3ecdc;--page-ink-2:#b4bad2;
+  --f-ui:'Noto Sans KR',system-ui,sans-serif;--f-display:'Nanum Myeongjo',serif;--w-display:800;--f-hand:'Nanum Pen Script',cursive;
+  --caret:#f3ecdc;--sel:#ff7a63;--sel-ink:#10162b;--focus:#ffb59f;
+  --bezel:#05070f;--screen:#0f1426;--ink:#f3ecdc;--ink-2:#b4bad2;--line:#55608f;
+  --field:#1a2242;--field-ink:#f3ecdc;--pill:#1f2850;--pill-ink:#f3ecdc;
+  --brand:#f3ecdc;--brand-ink:#10162b;--accent:#ff7a63;--ghost-line:#7d88b8;
+  --panel:#171e3d;--panel-ink:#f3ecdc;--panel-ink-2:#b4bad2;--panel-line:#55608f;
+  --sw-off:#55608f;--sw-on:#ff7a63;--badge:#1f2850;--badge-ink:#f3ecdc;
+  --seg-bg:#171e3d;--seg-on:#f3ecdc;--seg-on-ink:#10162b;--seg-ink:#b4bad2;
+  --tool:#1f2850;--tool-ink:#f3ecdc;--tool-on:#f3ecdc;--tool-on-ink:#10162b;
+  --r:4px;--r-lg:8px;
+  --shadow-1:0 1px 2px rgba(0,0,0,.5),0 4px 10px rgba(0,0,0,.3);
+  --paper:#f4ecd8;--paper-back:#e8dec4;--paper-line:rgba(60,70,110,.24);--paper-ink:#1d2330;
+  --paper-shadow:0 0 0 1px rgba(0,0,0,.25),0 10px 24px rgba(0,0,0,.55);
+  --paper-shadow-big:0 0 0 .1cqw rgba(0,0,0,.3),0 1.6cqw 4cqw rgba(0,0,0,.6);
+  --box-body:#a5301f;--box-body-2:#7c2115;--box-lid:#bd4430;--box-slot:#1a0c0a;--box-label:#f3ecdc;--box-label-ink:#10162b;--box-r:4px;
+  --chip:#f3ecdc;--chip-ink:#10162b;--chip-done:#232c58;--chip-done-ink:#b4bad2;
+  --stage:#0f1426;--stage-ink:#f3ecdc;--stage-ink-2:#b4bad2;--stage-btn:#f3ecdc;--stage-btn-ink:#10162b;--stage-line:#7d88b8;
+  --stage-chip:#1f2850;--stage-chip-ink:#f3ecdc;--code-bg:#f3ecdc;--code-ink:#10162b;
+}
+.title{letter-spacing:-.01em}
+.badge{box-shadow:inset 0 0 0 1px #ff7a63}
+.btn{box-shadow:0 0 0 1px rgba(255,255,255,.08),0 4px 12px rgba(0,0,0,.4)}
+.paper{box-shadow:inset 0 0 28px rgba(120,90,30,.10),0 0 0 1px rgba(0,0,0,.2),0 0 38px rgba(243,236,220,.16),0 10px 24px rgba(0,0,0,.5)}
+
+/* 명단: 아직 안 낸 사람만 밝게 켜져 있다 */
+.names li{border-radius:4px}
+.names.todo li{box-shadow:0 0 14px rgba(243,236,220,.18)}
+
+/* 시그니처: 조명 하나, 그리고 正 자 집계 */
+.big{background:radial-gradient(ellipse 52% 70% at 58% 46%,#1b2347 0%,#0f1426 72%)}
+.s2 .pile i{opacity:.5;filter:brightness(.7)}
+.s2 .reveal::before{content:'';position:absolute;inset:-6cqw -6cqw -2cqw;background:radial-gradient(ellipse 50% 52% at 50% 50%,rgba(243,236,220,.2),transparent 72%);pointer-events:none}
+.s2 .t,.s3 .t{color:var(--stage-ink)}
+.s1 .codebox b{border-radius:.4cqw}
+.s1 .qr{box-shadow:0 0 0 .2cqw #1f2850,var(--shadow-1)}
+.g-c{display:flex;flex-direction:column;justify-content:center;gap:1.2cqw;min-height:0}
+.g-c .r{display:grid;grid-template-columns:14cqw 1fr 7cqw;align-items:center;gap:2cqw;padding-bottom:1cqw;box-shadow:0 .1cqw 0 #232c58}
+.g-c .l{font-family:var(--f-display);font-weight:800;font-size:2.9cqw}
+.g-c .tl{display:flex;gap:1.4cqw;align-items:center}
+.g-c .z{height:4.2cqw;width:auto;overflow:visible;fill:none;stroke:var(--stage-ink);stroke-width:3.2;stroke-linecap:round}
+.g-c .z path{stroke-dasharray:60;stroke-dashoffset:60;animation:ink .5s ease-out forwards}
+.g-c .z path:nth-child(1){animation-delay:.1s}.g-c .z path:nth-child(2){animation-delay:.25s}.g-c .z path:nth-child(3){animation-delay:.4s}.g-c .z path:nth-child(4){animation-delay:.55s}.g-c .z path:nth-child(5){animation-delay:.7s}
+.g-c .win .z{stroke:var(--accent)}
+.g-c b{font-family:var(--f-display);font-weight:800;font-size:4.2cqw;text-align:right;font-variant-numeric:tabular-nums}
+.g-c .win b{color:var(--accent)}
+@keyframes ink{to{stroke-dashoffset:0}}

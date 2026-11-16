@@ -1,0 +1,51 @@
+/* 가안 B · 쪽지: 군청색 게시판 위에 마스킹테이프로 붙이는 용지 */
+:root{
+  --page:#e6eaff;--page-ink:#131a40;--page-ink-2:#404787;
+  --f-ui:'Gowun Dodum','Noto Sans KR',sans-serif;--f-display:'Jua','Noto Sans KR',sans-serif;--w-display:400;--f-hand:'Nanum Pen Script',cursive;
+  --caret:#131a40;--sel:#ffd43b;--sel-ink:#131a40;--focus:#ffd43b;
+  --bezel:#0d1450;--screen:#2a43d8;--ink:#fff;--ink-2:#dbe0ff;--line:#c9d1ff;
+  --field:#fff;--field-ink:#131a40;--pill:rgba(255,255,255,.18);--pill-ink:#fff;
+  --brand:#ffd43b;--brand-ink:#131a40;--accent:#ffd43b;--ghost-line:#fff;
+  --panel:#fff;--panel-ink:#131a40;--panel-ink-2:#4a5090;--panel-line:#7a84cc;
+  --sw-off:#7a84cc;--sw-on:#2a43d8;--badge:#fff;--badge-ink:#131a40;
+  --seg-bg:rgba(255,255,255,.18);--seg-on:#fff;--seg-on-ink:#131a40;--seg-ink:#fff;
+  --tool:rgba(255,255,255,.18);--tool-ink:#fff;--tool-on:#ffd43b;--tool-on-ink:#131a40;
+  --r:14px;--r-lg:20px;
+  --shadow-1:0 1px 2px rgba(10,18,80,.3),0 4px 10px rgba(10,18,80,.18);
+  --paper:#fbf3dc;--paper-back:#f1e7c8;--paper-line:rgba(42,67,216,.26);--paper-ink:#1d2330;
+  --paper-shadow:0 1px 1px rgba(10,18,80,.3),0 8px 18px rgba(10,18,80,.34);
+  --paper-shadow-big:0 .2cqw .5cqw rgba(10,18,80,.35),0 1.4cqw 3cqw rgba(10,18,80,.4);
+  --box-body:#ffd43b;--box-body-2:#f0b90f;--box-lid:#ffe27a;--box-slot:#131a40;--box-label:#131a40;--box-label-ink:#fff;--box-r:14px;
+  --chip:#eef0ff;--chip-ink:#131a40;--chip-done:#ffd43b;--chip-done-ink:#131a40;
+  --stage:#2a43d8;--stage-ink:#fff;--stage-ink-2:#dbe0ff;--stage-btn:#ffd43b;--stage-btn-ink:#131a40;--stage-line:rgba(255,255,255,.75);
+  --stage-chip:#fff;--stage-chip-ink:#131a40;--code-bg:#ffd43b;--code-ink:#131a40;
+}
+.title{letter-spacing:0}
+.btn{border-radius:99px;box-shadow:0 3px 0 rgba(10,18,80,.35)}
+.bigbtn{border-radius:99px}
+.input{border-radius:var(--r)}
+.panel{box-shadow:0 2px 0 rgba(10,18,80,.25)}
+.paper{transform:rotate(-.6deg)}
+
+/* 시그니처: 마스킹테이프. 제출한 이름은 노란 쪽지가 된다 */
+.names li{border:1.5px solid transparent}
+.names.todo li{background:#fff;border:2px dashed #131a40;color:var(--panel-ink);font-weight:800}
+.names.done li{transform:rotate(-1.2deg);box-shadow:0 1px 0 rgba(10,18,80,.25)}
+.names.done li:nth-child(3n+2){transform:rotate(1.4deg)}
+.names.done li:nth-child(4n){transform:rotate(-.4deg)}
+.tape,.ballot-big::before,.pile i:nth-child(3)::before{content:'';position:absolute;left:50%;top:-1.1cqw;width:7.5cqw;height:2.4cqw;margin-left:-3.75cqw;background:rgba(255,212,59,.92);transform:rotate(-3deg);box-shadow:0 .1cqw .3cqw rgba(10,18,80,.3);clip-path:polygon(0 8%,4% 0,8% 10%,12% 0,100% 0,100% 100%,12% 100%,8% 92%,4% 100%,0 92%)}
+.pile i:nth-child(3)::before{top:-.8cqw;width:4.2cqw;height:1.5cqw;margin-left:-2.1cqw}
+.s1 .qr{transform:rotate(-1.5deg)}
+.s1 .chips li{transform:rotate(-1deg)}
+.s1 .chips li:nth-child(even){transform:rotate(1.2deg)}
+.s1 .codebox b{box-shadow:0 .4cqw 0 rgba(10,18,80,.35)}
+.s2 .big-in::before{content:'';position:absolute;inset:auto 0 0 0;height:0}
+
+.g-b{height:100%;min-height:0;display:grid;grid-template-columns:repeat(4,1fr);gap:3cqw;align-items:end;padding:0 2cqw}
+.g-b .c{height:100%;min-height:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:.8cqw}
+.g-b .c b{font-family:var(--f-display);font-weight:400;font-size:4cqw;line-height:1}
+.g-b .bar{width:100%;height:calc(var(--h) * .68);border-radius:1.4cqw 1.4cqw .4cqw .4cqw;transform-origin:bottom;animation:rise 1s cubic-bezier(.2,.8,.2,1) both;box-shadow:0 .3cqw 0 rgba(10,18,80,.3)}
+.g-b .c span{font-family:var(--f-display);font-size:2.2cqw}
+.c0 .bar{background:#ffd43b}.c1 .bar{background:#fff}.c2 .bar{background:#8ff0d2}.c3 .bar{background:#ff9fc0}
+.c1 .bar{animation-delay:.1s}.c2 .bar{animation-delay:.2s}.c3 .bar{animation-delay:.3s}
+@keyframes rise{from{transform:scaleY(0)}}
