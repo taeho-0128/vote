@@ -61,7 +61,8 @@ const ERROR_MESSAGES: Record<ErrorReason, string> = {
 };
 
 type BindingMsg = Extract<ClientMsg, { t: 'createRoom' | 'resumeHost' | 'join' | 'watch' }>;
-type CommandMsg = Exclude<ClientMsg, BindingMsg>;
+type PingMsg = Extract<ClientMsg, { t: 'ping' }>;
+type CommandMsg = Exclude<ClientMsg, BindingMsg | PingMsg>;
 
 export interface Hub {
   handleConnection(ws: WebSocket, address: string): void;
@@ -129,6 +130,10 @@ export function createHub(store: RoomStore, limiter: AttemptLimiter): Hub {
 
   function handle(ws: WebSocket, conn: Conn, msg: ClientMsg): void {
     switch (msg.t) {
+      // Traffic for the host platform's idle timer (D-41). Valid in any binding state, answers this socket alone, and
+      // touches nothing: not the room's last activity, not the limiter, and it reveals nothing about rooms or tokens.
+      case 'ping':
+        return send(ws, { t: 'pong' });
       case 'createRoom':
       case 'resumeHost':
       case 'join':

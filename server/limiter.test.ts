@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { startServer, clientAddress } from './app.ts';
+import { startServer, clientAddress, normalizeAddress } from './app.ts';
 import type { RunningServer } from './app.ts';
 import { AttemptLimiter } from './limiter.ts';
 import { TestClient, startTestHub } from './testkit.ts';
@@ -114,14 +114,68 @@ describe('clientAddress', () => {
     expect(clientAddress(request({ 'x-forwarded-for': '9.9.9.9' }, '1.1.1.1'), false)).toBe('1.1.1.1');
   });
 
-  it('uses only the first value of X-Forwarded-For when the proxy is trusted', () => {
-    expect(clientAddress(request({ 'x-forwarded-for': '9.9.9.9, 8.8.8.8, 7.7.7.7' }, '1.1.1.1'), true)).toBe('9.9.9.9');
-    expect(clientAddress(request({ 'x-forwarded-for': ' 9.9.9.9 ,8.8.8.8' }, '1.1.1.1'), true)).toBe('9.9.9.9');
+  it('uses only the last value of X-Forwarded-For when the proxy is trusted', () => {
+    expect(clientAddress(request({ 'x-forwarded-for': '9.9.9.9, 8.8.8.8, 7.7.7.7' }, '1.1.1.1'), true)).toBe('7.7.7.7');
+    expect(clientAddress(request({ 'x-forwarded-for': ' 9.9.9.9 ,  8.8.8.8 ' }, '1.1.1.1'), true)).toBe('8.8.8.8');
+    expect(clientAddress(request({ 'x-forwarded-for': '2.2.2.2' }, '1.1.1.1'), true)).toBe('2.2.2.2');
   });
 
-  it('falls back to the socket address when a trusted header is missing or empty', () => {
+  it('does not let a value the client wrote in front change the address the proxy appended', () => {
+    const honest = clientAddress(request({ 'x-forwarded-for': '2.2.2.2' }, '1.1.1.1'), true);
+    for (const spoof of ['6.6.6.6, 2.2.2.2', '6.6.6.6,7.7.7.7,2.2.2.2', '::1, 127.0.0.1, 2.2.2.2', 'unknown, 2.2.2.2']) {
+      expect(clientAddress(request({ 'x-forwarded-for': spoof }, '1.1.1.1'), true)).toBe(honest);
+    }
+  });
+
+  it('reads the last value across several header lines', () => {
+    expect(clientAddress(request({ 'x-forwarded-for': ['9.9.9.9, 8.8.8.8', '7.7.7.7'] }, '1.1.1.1'), true)).toBe('7.7.7.7');
+    expect(clientAddress(request({ 'x-forwarded-for': ['9.9.9.9', ' ', ''] }, '1.1.1.1'), true)).toBe('9.9.9.9');
+  });
+
+  it('skips empty values, so a trailing comma does not turn into an empty key', () => {
+    expect(clientAddress(request({ 'x-forwarded-for': '2.2.2.2, ' }, '1.1.1.1'), true)).toBe('2.2.2.2');
+    expect(clientAddress(request({ 'x-forwarded-for': ',, 2.2.2.2,' }, '1.1.1.1'), true)).toBe('2.2.2.2');
+  });
+
+  it('falls back to the socket address when a trusted header is missing, empty, or ends in something that is not an address', () => {
     expect(clientAddress(request({}, '1.1.1.1'), true)).toBe('1.1.1.1');
     expect(clientAddress(request({ 'x-forwarded-for': '' }, '1.1.1.1'), true)).toBe('1.1.1.1');
+    expect(clientAddress(request({ 'x-forwarded-for': ' , ,' }, '1.1.1.1'), true)).toBe('1.1.1.1');
+    expect(clientAddress(request({ 'x-forwarded-for': '2.2.2.2, not-an-ip' }, '1.1.1.1'), true)).toBe('1.1.1.1');
+    expect(clientAddress(request({}, undefined), true)).toBe('unknown');
+  });
+
+  it('gives an IPv4 client one key whether it arrives as 1.2.3.4 or as ::ffff:1.2.3.4, on the socket or in the header', () => {
+    expect(clientAddress(request({}, '::ffff:1.2.3.4'), false)).toBe('1.2.3.4');
+    expect(clientAddress(request({}, '1.2.3.4'), false)).toBe('1.2.3.4');
+    expect(clientAddress(request({ 'x-forwarded-for': '9.9.9.9, ::ffff:1.2.3.4' }, '10.0.0.1'), true)).toBe('1.2.3.4');
+    expect(clientAddress(request({ 'x-forwarded-for': '::FFFF:0102:0304' }, '10.0.0.1'), true)).toBe('1.2.3.4');
+    expect(clientAddress(request({}, '::ffff:1.2.3.4'), true)).toBe('1.2.3.4');
+  });
+
+  it('gives an IPv6 client one key however the address is written', () => {
+    const key = clientAddress(request({ 'x-forwarded-for': '2001:db8::1' }, '10.0.0.1'), true);
+    expect(key).toBe('2001:db8::1');
+    for (const spelling of ['2001:DB8::1', '2001:0db8:0000:0000:0000:0000:0000:0001', '[2001:db8::1]', '[2001:db8::1]:443', '2001:db8::1%eth0']) {
+      expect(clientAddress(request({ 'x-forwarded-for': `6.6.6.6, ${spelling}` }, '10.0.0.1'), true)).toBe(key);
+    }
+  });
+
+  it('strips a port from an IPv4 value', () => {
+    expect(clientAddress(request({ 'x-forwarded-for': '2.2.2.2:51234' }, '10.0.0.1'), true)).toBe('2.2.2.2');
+  });
+});
+
+describe('normalizeAddress', () => {
+  it('returns undefined for anything that is not an IP address', () => {
+    for (const bad of ['', 'unknown', 'localhost', '1.2.3', '1.2.3.4.5', '01.2.3.4', '256.1.1.1', '2001:db8::zz', '1.2.3.4, 5.6.7.8']) {
+      expect(normalizeAddress(bad), bad).toBeUndefined();
+    }
+  });
+
+  it('leaves a plain IPv4 and IPv6 address as they are', () => {
+    expect(normalizeAddress('203.0.113.7')).toBe('203.0.113.7');
+    expect(normalizeAddress('::1')).toBe('::1');
   });
 });
 
@@ -343,16 +397,27 @@ describe('the address behind a proxy', () => {
     await disguised.expectError('rate_limited');
   });
 
-  it('tells clients apart by the first X-Forwarded-For value when the proxy is trusted', async () => {
+  it('tells clients apart by the last X-Forwarded-For value when the proxy is trusted', async () => {
     const { connect, guessEight, code } = await setup(true);
-    await guessEight(await connect('10.0.0.1, 172.16.0.1'));
+    await guessEight(await connect('172.16.0.1, 10.0.0.1'));
 
-    const other = await connect('10.0.0.2, 172.16.0.1');
+    const other = await connect('172.16.0.1, 10.0.0.2');
     other.send({ t: 'join', code, nickname: 'Alice' });
     await other.expect('joined');
 
-    const sameClient = await connect('10.0.0.1, 172.16.0.99');
+    const sameClient = await connect('172.16.0.99, 10.0.0.1');
     sameClient.send({ t: 'join', code, nickname: 'Bob' });
     await sameClient.expectError('rate_limited');
+  });
+
+  it('does not let a client dodge the lock by writing a different first value into X-Forwarded-For', async () => {
+    const { connect, guessEight, code } = await setup(true);
+    await guessEight(await connect('1.1.1.1, 2.2.2.2'));
+
+    for (const spoof of ['3.3.3.3, 2.2.2.2', '4.4.4.4, 5.5.5.5, 2.2.2.2', '::ffff:2.2.2.2']) {
+      const disguised = await connect(spoof);
+      disguised.send({ t: 'join', code, nickname: 'Eve' });
+      await disguised.expectError('rate_limited');
+    }
   });
 });

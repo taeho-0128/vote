@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { IncomingMessage } from 'node:http';
+import { isIP } from 'node:net';
 import type { AddressInfo } from 'node:net';
 import sirv from 'sirv';
 import { WebSocketServer } from 'ws';
@@ -31,7 +32,8 @@ export interface ServerOptions {
   staticDir?: string;
   ttlMs?: number;
   sweepMs?: number;
-  // Read the client address from the first value of X-Forwarded-For. Only safe behind a proxy that sets it.
+  // Read the client address from the last value of X-Forwarded-For, the one the proxy appended. Only safe behind a
+  // proxy that always appends it, and only when exactly one trusted proxy sits in front of the server.
   trustProxy?: boolean;
   // Origins besides the server's own host that may open a WebSocket, as `https://example.com`.
   allowedOrigins?: readonly string[];
@@ -42,13 +44,38 @@ export interface RunningServer {
   close(): Promise<void>;
 }
 
+const MAPPED_IPV4 = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/;
+
+// One client must get one limiter key however its address is spelled: IPv6 case and zero compression, an
+// IPv4-mapped IPv6 address (what a dual-stack socket reports for an IPv4 peer), a port suffix, a zone id.
+// Returns undefined for anything that is not an IP address.
+export function normalizeAddress(raw: string): string | undefined {
+  let host = raw.trim().replace(/%.*$/, '');
+  const bracketed = /^\[(.+)\](?::\d+)?$/.exec(host);
+  if (bracketed) host = bracketed[1]!;
+  else if (/^[\d.]+:\d+$/.test(host)) host = host.slice(0, host.lastIndexOf(':'));
+  const family = isIP(host);
+  if (family === 4) return host;
+  if (family !== 6) return undefined;
+  const canonical = new URL(`http://[${host}]`).hostname.slice(1, -1);
+  const mapped = MAPPED_IPV4.exec(canonical);
+  if (!mapped) return canonical;
+  const high = parseInt(mapped[1]!, 16);
+  const low = parseInt(mapped[2]!, 16);
+  return `${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`;
+}
+
+// A proxy appends the address it saw to X-Forwarded-For, while a client can write any values in front of it. So only
+// the last value is the proxy's word, and whatever a client puts in front of it cannot change its bucket.
+// A last value that is not an address falls back to the socket's, which is the proxy: one shared bucket, never an escape.
 export function clientAddress(req: IncomingMessage, trustProxy: boolean): string {
-  if (trustProxy) {
-    const header = req.headers['x-forwarded-for'];
-    const first = (Array.isArray(header) ? header[0] : header)?.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  return req.socket.remoteAddress ?? 'unknown';
+  const socketAddress = req.socket.remoteAddress;
+  const fallback = (socketAddress && normalizeAddress(socketAddress)) || socketAddress || 'unknown';
+  if (!trustProxy) return fallback;
+  const lines = req.headers['x-forwarded-for'];
+  const values = (Array.isArray(lines) ? lines : [lines ?? '']).flatMap((line) => line.split(',')).map((v) => v.trim());
+  const last = values.findLast((value) => value !== '');
+  return (last && normalizeAddress(last)) || fallback;
 }
 
 const normalizeOrigin = (origin: string): string => origin.trim().replace(/\/+$/, '').toLowerCase();
