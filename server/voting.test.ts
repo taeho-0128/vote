@@ -235,7 +235,7 @@ describe('views', () => {
 
     const countOf = (room: Room, viewer: { kind: 'host' } | { kind: 'participant'; id: ParticipantId }) => {
       const { stage } = viewFor(room, viewer);
-      return stage.kind === 'lobby' ? undefined : 'submittedCount' in stage ? stage.submittedCount : stage.ballotCount;
+      return 'submittedCount' in stage ? stage.submittedCount : 'ballotCount' in stage ? stage.ballotCount : undefined;
     };
     for (const [room, expected] of [[empty, 0], [two, 2], [closed, 2]] as const) {
       for (const id of ids) expect(countOf(room, { kind: 'participant', id })).toBe(expected);
@@ -261,7 +261,7 @@ describe('views', () => {
 });
 
 describe('ballotsOf', () => {
-  it('keeps the author of every ballot, including in an anonymous vote', () => {
+  it('keeps the author of every ballot, including in an anonymous vote, in reveal order', () => {
     const { deps, voting, voteId, ids } = setup(freeform);
     expect(voting.stage.kind === 'voting' && voting.stage.vote.anonymity).toBe('anonymous');
     const room = must(submitBallot(deps, must(submitBallot(deps, voting, ids[2]!, voteId, text('c'))), ids[0]!, voteId, text('a')));
@@ -269,8 +269,8 @@ describe('ballotsOf', () => {
     const closed = must(closeVote(deps, room, voteId));
 
     expect(ballotsOf(closed, voteId)).toEqual([
-      { participantId: ids[2], content: text('c'), submittedAt: expect.any(Number) },
       { participantId: ids[0], content: text('a'), submittedAt: expect.any(Number) },
+      { participantId: ids[2], content: text('c'), submittedAt: expect.any(Number) },
     ]);
   });
 
@@ -296,11 +296,11 @@ describe('ballotsOf', () => {
 describe('what a view may reveal', () => {
   const secret = '비밀문장-ALPHA-7731';
 
-  it('carries no ballot text and no token in any view at any stage', () => {
+  it('carries ballot text only in the host view of a closed vote, and a token only where it belongs', () => {
     const deps = fakeDeps();
     const lobby = roomWith(deps, 'Alice', 'Bob');
     const ids = idsOf(lobby);
-    const tokens = [lobby.hostToken, ...[...lobby.participants.values()].map((p) => p.token)];
+    const secretTokens = [lobby.hostToken, ...[...lobby.participants.values()].map((p) => p.token)];
 
     const open = must(startVote(deps, lobby, freeform));
     const voteId = voteIdOf(open);
@@ -324,9 +324,11 @@ describe('what a view may reveal', () => {
           expect(Object.keys(view.me).sort()).toEqual(['id', 'nickname']);
         }
         const wire = JSON.stringify(view);
-        expect(wire).not.toContain(secret);
-        expect(wire).not.toContain('optionIndex');
-        for (const token of tokens) expect(wire).not.toContain(token);
+        const hostSeesBallots = view.role === 'host' && view.stage.kind === 'closed';
+        expect(wire.includes(secret)).toBe(hostSeesBallots && room === closed);
+        if (view.role !== 'host') expect(wire).not.toContain('optionIndex');
+        expect(wire.includes(lobby.displayToken)).toBe(view.role === 'host');
+        for (const token of secretTokens) expect(wire).not.toContain(token);
       }
     }
   });

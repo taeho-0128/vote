@@ -2,7 +2,20 @@ import { WebSocket } from 'ws';
 import type { RawData } from 'ws';
 import { clientMsgSchema } from '../shared/protocol.ts';
 import type { ClientMsg, ErrorReason, ServerMsg } from '../shared/protocol.ts';
-import { closeVote, dismissVote, isHostToken, join, setConnected, startVote, submitBallot, viewFor } from './rooms.ts';
+import {
+  closeVote,
+  dismissVote,
+  isDisplayToken,
+  isHostToken,
+  join,
+  revealMode,
+  revealMove,
+  setConnected,
+  setHidden,
+  startVote,
+  submitBallot,
+  viewFor,
+} from './rooms.ts';
 import type { ParticipantId, Room, RoomStore, Transition, Viewer } from './rooms.ts';
 
 const PING_INTERVAL_MS = 25_000;
@@ -10,6 +23,7 @@ const PING_INTERVAL_MS = 25_000;
 type Binding =
   | { readonly kind: 'unbound' }
   | { readonly kind: 'host'; readonly code: string }
+  | { readonly kind: 'display'; readonly code: string }
   | { readonly kind: 'participant'; readonly code: string; readonly id: ParticipantId };
 
 interface Conn {
@@ -24,6 +38,7 @@ const ERROR_MESSAGES: Record<ErrorReason, string> = {
   room_full: '지금은 새 방을 만들 수 없어요.',
   bad_host_token: '운영자 확인에 실패했어요.',
   bad_participant_token: '참가자 확인에 실패했어요.',
+  bad_display_token: '대화면 링크가 올바르지 않아요.',
   nickname_invalid: '닉네임은 1~8자로 입력해 주세요.',
   nickname_taken: '이미 쓰고 있는 닉네임이에요.',
   replaced: '다른 기기에서 접속해서 이 연결은 종료돼요.',
@@ -34,9 +49,10 @@ const ERROR_MESSAGES: Record<ErrorReason, string> = {
   bad_vote: '투표 설정이 올바르지 않아요.',
   bad_ballot: '용지 내용이 올바르지 않아요.',
   already_submitted: '이미 제출했어요. 고칠 수 없어요.',
+  bad_reveal: '지금은 그렇게 펼칠 수 없어요.',
 };
 
-type BindingMsg = Extract<ClientMsg, { t: 'createRoom' | 'resumeHost' | 'join' }>;
+type BindingMsg = Extract<ClientMsg, { t: 'createRoom' | 'resumeHost' | 'join' | 'watch' }>;
 type CommandMsg = Exclude<ClientMsg, BindingMsg>;
 
 export interface Hub {
@@ -50,7 +66,14 @@ function rawToString(data: RawData): string {
 }
 
 function viewerOf(binding: Exclude<Binding, { kind: 'unbound' }>): Viewer {
-  return binding.kind === 'host' ? { kind: 'host' } : { kind: 'participant', id: binding.id };
+  switch (binding.kind) {
+    case 'host':
+      return { kind: 'host' };
+    case 'display':
+      return { kind: 'display' };
+    case 'participant':
+      return { kind: 'participant', id: binding.id };
+  }
 }
 
 export function createHub(store: RoomStore): Hub {
@@ -79,6 +102,7 @@ export function createHub(store: RoomStore): Hub {
       case 'createRoom':
       case 'resumeHost':
       case 'join':
+      case 'watch':
         return bind(ws, conn, msg);
       default:
         return command(ws, conn, msg);
@@ -102,6 +126,14 @@ export function createHub(store: RoomStore): Hub {
         if (!isHostToken(room, msg.hostToken)) return sendError(ws, 'bad_host_token');
         conn.binding = { kind: 'host', code: room.code };
         send(ws, { t: 'hosted', hostToken: room.hostToken, view: viewFor(room, { kind: 'host' }) });
+        return;
+      }
+      case 'watch': {
+        const room = store.get(msg.code);
+        if (!room) return sendError(ws, 'room_not_found');
+        if (!isDisplayToken(room, msg.displayToken)) return sendError(ws, 'bad_display_token');
+        conn.binding = { kind: 'display', code: room.code };
+        send(ws, { t: 'watching', view: viewFor(room, { kind: 'display' }) });
         return;
       }
       case 'join': {
@@ -128,6 +160,7 @@ export function createHub(store: RoomStore): Hub {
   function command(ws: WebSocket, conn: Conn, msg: CommandMsg): void {
     const { binding } = conn;
     if (binding.kind === 'unbound') return sendError(ws, 'not_bound');
+    if (binding.kind === 'display') return sendError(ws, 'not_host');
 
     if (msg.t === 'submitBallot') {
       if (binding.kind !== 'participant') return sendError(ws, 'not_bound');
@@ -143,6 +176,12 @@ export function createHub(store: RoomStore): Hub {
         return apply(ws, binding.code, (room) => closeVote(store.deps, room, msg.voteId));
       case 'dismissVote':
         return apply(ws, binding.code, (room) => dismissVote(store.deps, room, msg.voteId));
+      case 'revealMove':
+        return apply(ws, binding.code, (room) => revealMove(store.deps, room, msg.voteId, msg.cursor));
+      case 'revealMode':
+        return apply(ws, binding.code, (room) => revealMode(store.deps, room, msg.voteId, msg.mode));
+      case 'setHidden':
+        return apply(ws, binding.code, (room) => setHidden(store.deps, room, msg.voteId, msg.hidden));
     }
   }
 

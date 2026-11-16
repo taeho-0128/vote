@@ -10,6 +10,18 @@ import { RoomStore } from './rooms.ts';
 // A full sheet of ink (5000 points, four-digit coordinates) is about 57 KB of JSON.
 export const MAX_PAYLOAD_BYTES = 65_536;
 
+// Compression exists for the host view of a closed vote (up to ~3 MB of ink). Without context takeover no zlib state
+// survives a message, so memory does not grow with the socket count. The 8 KiB threshold keeps the many small
+// roster and count frames from paying for a zlib stream each. ws hands maxPayload to the inflater, so it limits
+// the decompressed size of an incoming message, not its wire size.
+const COMPRESSION = {
+  threshold: 8192,
+  serverNoContextTakeover: true,
+  clientNoContextTakeover: true,
+  zlibDeflateOptions: { level: 3 },
+  concurrencyLimit: 4,
+} as const;
+
 export interface ServerOptions {
   port: number;
   staticDir?: string;
@@ -37,7 +49,7 @@ export async function startServer({ port, staticDir }: ServerOptions): Promise<R
     }
   });
 
-  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES, perMessageDeflate: COMPRESSION });
   server.on('upgrade', (req, socket, head) => {
     if (req.url?.split('?')[0] !== '/ws') {
       socket.destroy();

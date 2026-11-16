@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { startServer } from './app.ts';
 import type { RunningServer } from './app.ts';
+import type { HostView, ParticipantView, View } from '../shared/protocol.ts';
 import { TestClient } from './testkit.ts';
 
 let server: RunningServer;
@@ -84,8 +85,8 @@ describe('hosting', () => {
     await second.expect('hosted');
 
     await joinRoom(code, 'Alice');
-    expect(nicknames((await host.expect('view')).view)).toEqual(['Alice']);
-    expect(nicknames((await second.expect('view')).view)).toEqual(['Alice']);
+    expect(nicknames(await host.expectView('host'))).toEqual(['Alice']);
+    expect(nicknames(await second.expectView('host'))).toEqual(['Alice']);
   });
 
   it('refuses to rebind a socket that already has a role', async () => {
@@ -104,16 +105,15 @@ describe('joining', () => {
     const alice = await joinRoom(code, 'Alice');
     expect(alice.joined.view.me.nickname).toBe('Alice');
     expect(nicknames(alice.joined.view)).toEqual(['Alice']);
-    expect(nicknames((await host.expect('view')).view)).toEqual(['Alice']);
+    expect(nicknames(await host.expectView('host'))).toEqual(['Alice']);
 
     const bob = await joinRoom(code, 'Bob');
     expect(nicknames(bob.joined.view)).toEqual(['Alice', 'Bob']);
-    const hostView = (await host.expect('view')).view;
+    const hostView = await host.expectView('host');
     expect(nicknames(hostView)).toEqual(['Alice', 'Bob']);
     expect(hostView.participants.every((p) => p.connected)).toBe(true);
 
-    const aliceView = (await alice.client.expect('view')).view;
-    expect(aliceView.role).toBe('participant');
+    const aliceView = await alice.client.expectView('participant');
     expect(nicknames(aliceView)).toEqual(['Alice', 'Bob']);
   });
 
@@ -160,18 +160,18 @@ describe('disconnecting', () => {
     await alice.client.expect('view');
 
     bob.client.close();
-    const hostView = (await host.expect('view')).view;
+    const hostView = await host.expectView('host');
     expect(hostView.participants.map((p) => [p.nickname, p.connected])).toEqual([
       ['Alice', true],
       ['Bob', false],
     ]);
-    const aliceView = (await alice.client.expect('view')).view;
+    const aliceView = await alice.client.expectView('participant');
     expect(aliceView.participants.find((p) => p.nickname === 'Bob')?.connected).toBe(false);
 
     const back = await joinRoom(code, 'ignored', bob.joined.participantToken);
     expect(back.joined.view.me).toEqual(bob.joined.view.me);
     expect(back.joined.participantToken).toBe(bob.joined.participantToken);
-    const resumed = (await host.expect('view')).view;
+    const resumed = await host.expectView('host');
     expect(resumed.participants.map((p) => [p.nickname, p.connected])).toEqual([
       ['Alice', true],
       ['Bob', true],
@@ -198,7 +198,7 @@ describe('one socket per participant', () => {
     expect(await first.client.closed).toBeTypeOf('number');
     expect(second.joined.view.me).toEqual(first.joined.view.me);
 
-    const hostView = (await host.expect('view')).view;
+    const hostView = await host.expectView('host');
     expect(hostView.participants).toEqual([
       { id: first.joined.view.me.id, nickname: 'Alice', connected: true, submitted: false },
     ]);
@@ -267,6 +267,16 @@ async function views(...cs: TestClient[]) {
   return Promise.all(cs.map(async (c) => (await c.expect('view')).view));
 }
 
+function asHost(view: View | undefined): HostView {
+  if (view?.role !== 'host') throw new Error('expected a host view');
+  return view;
+}
+
+function asParticipant(view: View | undefined): ParticipantView {
+  if (view?.role !== 'participant') throw new Error('expected a participant view');
+  return view;
+}
+
 async function openVote(host: TestClient, guests: { client: TestClient }[], d: object = draft) {
   host.send({ t: 'startVote', draft: d });
   const [hostView] = await views(host, ...guests.map((g) => g.client));
@@ -293,20 +303,20 @@ describe('voting lifecycle', () => {
     alice.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: '비밀문장-ALPHA' } });
     const [hostAfterAlice, aliceAfter, bobAfterAlice] = await views(host, alice, bob);
     expect(hostAfterAlice).toMatchObject({ stage: { submittedCount: 1 } });
-    expect(hostAfterAlice!.participants.map((p) => [p.nickname, 'submitted' in p && p.submitted])).toEqual([
+    expect(asHost(hostAfterAlice).participants.map((p) => [p.nickname, 'submitted' in p && p.submitted])).toEqual([
       ['Alice', true],
       ['Bob', false],
     ]);
     expect(aliceAfter).toMatchObject({ stage: { submitted: true, submittedCount: 1 } });
     expect(bobAfterAlice).toMatchObject({ stage: { submitted: false, submittedCount: 1 } });
-    expect(bobAfterAlice!.participants.every((p) => !('submitted' in p))).toBe(true);
+    expect(asParticipant(bobAfterAlice).participants.every((p) => !('submitted' in p))).toBe(true);
 
     bob.send({ t: 'submitBallot', voteId, content: { kind: 'text', text: '다른 문장' } });
     const [hostAfterBob, aliceAfterBob, bobAfter] = await views(host, alice, bob);
     expect(hostAfterBob).toMatchObject({ stage: { submittedCount: 2 } });
     expect(aliceAfterBob).toMatchObject({ stage: { submitted: true, submittedCount: 2 } });
     expect(bobAfter).toMatchObject({ stage: { submitted: true, submittedCount: 2 } });
-    expect(hostAfterBob!.participants.every((p) => 'submitted' in p && p.submitted)).toBe(true);
+    expect(asHost(hostAfterBob).participants.every((p) => 'submitted' in p && p.submitted)).toBe(true);
 
     host.send({ t: 'closeVote', voteId });
     const [hostClosed, aliceClosed] = await views(host, alice, bob);
@@ -323,17 +333,22 @@ describe('voting lifecycle', () => {
     host.send({ t: 'dismissVote', voteId });
     const [hostLobby, aliceLobby] = await views(host, alice, bob, late.client);
     expect(hostLobby).toMatchObject({ stage: { kind: 'lobby' } });
-    expect(hostLobby!.participants.every((p) => 'submitted' in p && !p.submitted)).toBe(true);
+    expect(asHost(hostLobby).participants.every((p) => 'submitted' in p && !p.submitted)).toBe(true);
     expect(aliceLobby).toMatchObject({ stage: { kind: 'lobby' } });
 
     const secondId = await openVote(host, [...guests, late], lunch);
     expect(secondId).not.toBe(voteId);
 
-    for (const c of [host, alice, bob, late.client]) {
+    for (const c of [alice, bob, late.client]) {
       for (const raw of c.raw) {
         expect(raw).not.toContain('비밀문장-ALPHA');
         expect(raw).not.toContain('다른 문장');
       }
+    }
+    for (const raw of host.raw) {
+      const closedFrame = raw.includes('"kind":"closed"');
+      expect(raw.includes('비밀문장-ALPHA')).toBe(closedFrame);
+      expect(raw.includes('다른 문장')).toBe(closedFrame);
     }
   });
 

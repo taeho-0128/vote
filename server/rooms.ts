@@ -1,8 +1,20 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { nicknameKey, normalizeNickname } from '../shared/nickname.ts';
-import type { ErrorReason, HostStage, HostView, ParticipantStage, ParticipantView, VotePublic } from '../shared/protocol.ts';
+import type {
+  DisplayReveal,
+  DisplayStage,
+  DisplayView,
+  ErrorReason,
+  HostStage,
+  HostView,
+  ParticipantStage,
+  ParticipantSummary,
+  ParticipantView,
+  RevealMode,
+  VotePublic,
+} from '../shared/protocol.ts';
 import { normalizeBallotContent, normalizeVoteDraft } from '../shared/vote.ts';
-import type { BallotContent, VoteDraft } from '../shared/vote.ts';
+import type { BallotContent, Paper, VoteDraft } from '../shared/vote.ts';
 
 export type ParticipantId = string;
 
@@ -29,14 +41,26 @@ export interface VoteRecord {
   readonly ballots: Ballots;
 }
 
+// `order` is the ballot authors in the random order fixed when the vote closed (D-09).
+// `cursor` -1 is the folded pile, otherwise an index into `order`.
+export interface Reveal {
+  readonly order: readonly ParticipantId[];
+  readonly cursor: number;
+  readonly mode: RevealMode;
+  readonly hidden: boolean;
+}
+
 export type Stage =
   | { readonly kind: 'lobby' }
   | ({ readonly kind: 'voting' } & VoteRecord)
-  | ({ readonly kind: 'closed' } & VoteRecord);
+  | ({ readonly kind: 'closed' } & VoteRecord & { readonly reveal: Reveal });
+
+export type ClosedStage = Extract<Stage, { readonly kind: 'closed' }>;
 
 export interface Room {
   readonly code: string;
   readonly hostToken: string;
+  readonly displayToken: string;
   readonly participants: ReadonlyMap<ParticipantId, Participant>;
   readonly stage: Stage;
   readonly closedVotes: readonly VoteRecord[];
@@ -44,13 +68,17 @@ export interface Room {
   readonly lastActiveAt: number;
 }
 
-export type Viewer = { readonly kind: 'host' } | { readonly kind: 'participant'; readonly id: ParticipantId };
+export type Viewer =
+  | { readonly kind: 'host' }
+  | { readonly kind: 'participant'; readonly id: ParticipantId }
+  | { readonly kind: 'display' };
 
 export interface Deps {
   now(): number;
   randomCode(): string;
   randomToken(): string;
   randomId(): string;
+  shuffle<T>(items: readonly T[]): T[];
 }
 
 export type JoinRequest = { readonly nickname: string; readonly participantToken?: string };
@@ -96,6 +124,7 @@ export function createRoom(deps: Deps, takenCodes: ReadonlySet<string>): Room | 
   return {
     code,
     hostToken: deps.randomToken(),
+    displayToken: deps.randomToken(),
     participants: new Map(),
     stage: { kind: 'lobby' },
     closedVotes: [],
@@ -141,6 +170,10 @@ export function isHostToken(room: Room, token: string): boolean {
   return safeEqual(room.hostToken, token);
 }
 
+export function isDisplayToken(room: Room, token: string): boolean {
+  return safeEqual(room.displayToken, token);
+}
+
 export type Transition<R extends ErrorReason> =
   | { readonly ok: true; readonly room: Room }
   | { readonly ok: false; readonly reason: R };
@@ -183,7 +216,44 @@ export function closeVote(deps: Deps, room: Room, voteId: string): Transition<'w
   const { stage } = room;
   if (stage.kind !== 'voting') return refuse('wrong_stage');
   if (stage.vote.id !== voteId) return refuse('stale_vote');
-  return advance(room, { kind: 'closed', vote: stage.vote, ballots: stage.ballots }, deps.now());
+  // Shuffling the entries keeps the stored ballots in reveal order, so a dismissed vote stays in that order too.
+  const shuffled = deps.shuffle([...stage.ballots]);
+  const reveal: Reveal = { order: shuffled.map(([id]) => id), cursor: -1, mode: 'one', hidden: false };
+  return advance(room, { kind: 'closed', vote: stage.vote, ballots: new Map(shuffled), reveal }, deps.now());
+}
+
+type RevealRefusal = 'wrong_stage' | 'stale_vote' | 'bad_reveal';
+
+function reviseReveal(
+  deps: Deps,
+  room: Room,
+  voteId: string,
+  revise: (reveal: Reveal, stage: ClosedStage) => Reveal | null,
+): Transition<RevealRefusal> {
+  const { stage } = room;
+  if (stage.kind !== 'closed') return refuse('wrong_stage');
+  if (stage.vote.id !== voteId) return refuse('stale_vote');
+  const reveal = revise(stage.reveal, stage);
+  if (reveal === null) return refuse('bad_reveal');
+  return advance(room, { ...stage, reveal }, deps.now());
+}
+
+export function revealMove(deps: Deps, room: Room, voteId: string, cursor: number): Transition<RevealRefusal> {
+  return reviseReveal(deps, room, voteId, (reveal) => {
+    const inRange = Number.isInteger(cursor) && cursor >= -1 && cursor < reveal.order.length;
+    return reveal.mode === 'one' && inRange ? { ...reveal, cursor } : null;
+  });
+}
+
+// Going back to `one` keeps the cursor, so the host resumes where they were.
+export function revealMode(deps: Deps, room: Room, voteId: string, mode: RevealMode): Transition<RevealRefusal> {
+  return reviseReveal(deps, room, voteId, (reveal, stage) =>
+    mode === 'all' && stage.vote.paper.kind !== 'choice' ? null : { ...reveal, mode },
+  );
+}
+
+export function setHidden(deps: Deps, room: Room, voteId: string, hidden: boolean): Transition<RevealRefusal> {
+  return reviseReveal(deps, room, voteId, (reveal) => ({ ...reveal, hidden }));
 }
 
 export function dismissVote(deps: Deps, room: Room, voteId: string): Transition<'wrong_stage' | 'stale_vote'> {
@@ -198,7 +268,7 @@ export function dismissVote(deps: Deps, room: Room, voteId: string): Transition<
 }
 
 // Only closed votes are readable, so an open vote's ballots cannot reach a view by accident (D-10).
-// Order is submission order. Anything that reveals ballots must shuffle them (D-09).
+// A closed vote's ballots are stored in their reveal order (D-09).
 export function ballotsOf(room: Room, voteId: string): readonly Ballot[] | undefined {
   const records = room.stage.kind === 'closed' ? [...room.closedVotes, room.stage] : room.closedVotes;
   const record = records.find((r) => r.vote.id === voteId);
@@ -212,14 +282,52 @@ const ballotsIn = (stage: Stage): Ballots => (stage.kind === 'lobby' ? NO_BALLOT
 // Fields are copied one by one so a field added to Vote later stays out of views until it is listed here.
 const publicVote = ({ id, title, anonymity, paper }: Vote): VotePublic => ({ id, title, anonymity, paper });
 
-function hostStage(stage: Stage): HostStage {
+const summariesOf = (room: Room): ParticipantSummary[] =>
+  [...room.participants.values()].map(({ id, nickname, connected }) => ({ id, nickname, connected }));
+
+function nicknameOf(room: Room, id: ParticipantId): string {
+  const participant = room.participants.get(id);
+  if (!participant) throw new Error(`author ${id} is not in room ${room.code}`);
+  return participant.nickname;
+}
+
+const inRevealOrder = ({ ballots, reveal }: ClosedStage): Ballot[] =>
+  reveal.order.map((id) => {
+    const ballot = ballots.get(id);
+    if (!ballot) throw new Error(`reveal order names ${id}, who has no ballot`);
+    return ballot;
+  });
+
+function tallyOf(paper: Paper, ballots: readonly Ballot[]): number[] | null {
+  if (paper.kind !== 'choice') return null;
+  const counts = paper.options.map(() => 0);
+  for (const { content } of ballots) {
+    if (content.kind === 'choice') counts[content.optionIndex] = (counts[content.optionIndex] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function hostStage(room: Room): HostStage {
+  const { stage } = room;
   switch (stage.kind) {
     case 'lobby':
       return { kind: 'lobby' };
     case 'voting':
       return { kind: 'voting', vote: publicVote(stage.vote), submittedCount: stage.ballots.size };
-    case 'closed':
-      return { kind: 'closed', vote: publicVote(stage.vote), ballotCount: stage.ballots.size };
+    case 'closed': {
+      const { cursor, mode, hidden } = stage.reveal;
+      const ballots = inRevealOrder(stage).map(({ participantId, content }) => ({
+        id: participantId,
+        content,
+        author: { id: participantId, nickname: nicknameOf(room, participantId) },
+      }));
+      return {
+        kind: 'closed',
+        vote: publicVote(stage.vote),
+        ballotCount: stage.ballots.size,
+        reveal: { cursor, mode, hidden, ballots },
+      };
+    }
   }
 }
 
@@ -228,29 +336,71 @@ function participantStage(stage: Stage, submitted: boolean): ParticipantStage {
   return { kind: stage.kind, vote: publicVote(stage.vote), submitted, submittedCount: stage.ballots.size };
 }
 
+// The display is a public screen. Besides the ballot at the cursor it gets counts only, and never an author id,
+// a token, or (for an anonymous vote) a nickname. Hiding (D-14) withholds the tally too, so a hidden screen shows nothing of the result.
+function displayReveal(room: Room, stage: ClosedStage): DisplayReveal {
+  const { cursor, mode, hidden } = stage.reveal;
+  const ordered = inRevealOrder(stage);
+  const ballot = cursor >= 0 && !hidden ? ordered[cursor] : undefined;
+  const signed = stage.vote.anonymity === 'named';
+  return {
+    cursor,
+    total: ordered.length,
+    mode,
+    hidden,
+    current: ballot
+      ? { content: ballot.content, signature: signed ? nicknameOf(room, ballot.participantId) : null }
+      : null,
+    tally: mode === 'all' && !hidden ? tallyOf(stage.vote.paper, ordered) : null,
+  };
+}
+
+function displayStage(room: Room): DisplayStage {
+  const { stage } = room;
+  switch (stage.kind) {
+    case 'lobby':
+      return { kind: 'lobby', participants: summariesOf(room) };
+    case 'voting':
+      return {
+        kind: 'voting',
+        vote: publicVote(stage.vote),
+        submittedCount: stage.ballots.size,
+        participantCount: room.participants.size,
+      };
+    case 'closed':
+      return { kind: 'closed', vote: publicVote(stage.vote), reveal: displayReveal(room, stage) };
+  }
+}
+
 export function viewFor(room: Room, viewer: { readonly kind: 'host' }): HostView;
 export function viewFor(room: Room, viewer: { readonly kind: 'participant'; readonly id: ParticipantId }): ParticipantView;
-export function viewFor(room: Room, viewer: Viewer): HostView | ParticipantView;
-export function viewFor(room: Room, viewer: Viewer): HostView | ParticipantView {
+export function viewFor(room: Room, viewer: { readonly kind: 'display' }): DisplayView;
+export function viewFor(room: Room, viewer: Viewer): HostView | ParticipantView | DisplayView;
+export function viewFor(room: Room, viewer: Viewer): HostView | ParticipantView | DisplayView {
   const ballots = ballotsIn(room.stage);
-  const summaries = [...room.participants.values()].map(({ id, nickname, connected }) => ({ id, nickname, connected }));
-  if (viewer.kind === 'host') {
-    return {
-      role: 'host',
-      code: room.code,
-      stage: hostStage(room.stage),
-      participants: summaries.map((p) => ({ ...p, submitted: ballots.has(p.id) })),
-    };
+  switch (viewer.kind) {
+    case 'host':
+      return {
+        role: 'host',
+        code: room.code,
+        displayToken: room.displayToken,
+        stage: hostStage(room),
+        participants: summariesOf(room).map((p) => ({ ...p, submitted: ballots.has(p.id) })),
+      };
+    case 'participant': {
+      const me = room.participants.get(viewer.id);
+      if (!me) throw new Error(`viewer ${viewer.id} is not in room ${room.code}`);
+      return {
+        role: 'participant',
+        code: room.code,
+        stage: participantStage(room.stage, ballots.has(me.id)),
+        me: { id: me.id, nickname: me.nickname },
+        participants: summariesOf(room),
+      };
+    }
+    case 'display':
+      return { role: 'display', code: room.code, stage: displayStage(room) };
   }
-  const me = room.participants.get(viewer.id);
-  if (!me) throw new Error(`viewer ${viewer.id} is not in room ${room.code}`);
-  return {
-    role: 'participant',
-    code: room.code,
-    stage: participantStage(room.stage, ballots.has(me.id)),
-    me: { id: me.id, nickname: me.nickname },
-    participants: summaries,
-  };
 }
 
 export class RoomStore {

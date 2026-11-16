@@ -83,8 +83,8 @@ describe('ink ballots in the domain', () => {
     const closed = must(closeVote(deps, room, voteId));
 
     expect(ballotsOf(closed, voteId)?.map((b) => [b.participantId, b.content])).toEqual([
-      [ids[0], text('글')],
       [ids[1], ink(strokes)],
+      [ids[0], text('글')],
     ]);
   });
 
@@ -99,7 +99,7 @@ describe('ink ballots in the domain', () => {
     expect(ballotsOf(must(closeVote(deps, once, voteId)), voteId)?.map((b) => b.content)).toEqual([first]);
   });
 
-  it('carries no stroke coordinates in any view at any stage', () => {
+  it('carries stroke coordinates only in the host view of the closed vote', () => {
     const { deps, lobby, voting, voteId, ids } = setup();
     const submitted = must(submitBallot(deps, voting, ids[0]!, voteId, ink([{ w: 'thin', pts: [731, 1297, 888, 1111] }])));
     const closed = must(closeVote(deps, submitted, voteId));
@@ -109,7 +109,8 @@ describe('ink ballots in the domain', () => {
       for (const view of [viewFor(room, { kind: 'host' }), ...ids.map((id) => viewFor(room, { kind: 'participant', id }))]) {
         expect(viewSchema.safeParse(view).success).toBe(true);
         const wire = JSON.stringify(view);
-        for (const leak of ['731', '1297', '888', '1111', 'pts', 'strokes']) expect(wire).not.toContain(leak);
+        const hostSeesBallots = view.role === 'host' && room === closed;
+        for (const leak of ['731', '1297', '888', '1111', 'pts', 'strokes']) expect(wire.includes(leak)).toBe(hostSeesBallots);
       }
     }
   });
@@ -160,7 +161,7 @@ describe('ink ballots over a real socket', () => {
     return view.role === 'host' && view.stage.kind === 'voting' ? view.stage.submittedCount : undefined;
   };
 
-  it('accepts a ~40 KB ink ballot, counts it, and sends no stroke back in any frame', async () => {
+  it('accepts a ~40 KB ink ballot, counts it, and sends no stroke to anyone but the host after close', async () => {
     const { host, guests, voteId } = await openVote({ kind: 'freeform' }, 'Pen');
     const [pen] = guests as [TestClient];
     const message = ballotMsg(voteId, ink(strokesOf(2, 4000)));
@@ -178,7 +179,9 @@ describe('ink ballots over a real socket', () => {
     await pen.expect('view');
 
     const [first] = scribble(0);
-    for (const raw of [...host.raw, ...pen.raw]) {
+    const closedFrame = host.raw.at(-1)!;
+    expect(closedFrame).toContain(`[${first},`);
+    for (const raw of [...host.raw.slice(0, -1), ...pen.raw]) {
       expect(raw).not.toContain('pts');
       expect(raw).not.toContain('strokes');
       expect(raw).not.toContain(`${first},`);

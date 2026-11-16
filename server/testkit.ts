@@ -1,9 +1,10 @@
 import { WebSocket } from 'ws';
 import type { ClientOptions } from 'ws';
 import { serverMsgSchema } from '../shared/protocol.ts';
-import type { ServerMsg } from '../shared/protocol.ts';
-import { createRoom, join } from './rooms.ts';
-import type { Deps, Room } from './rooms.ts';
+import type { ErrorReason, ServerMsg, View } from '../shared/protocol.ts';
+import type { BallotContent, VoteDraft } from '../shared/vote.ts';
+import { closeVote, createRoom, join, startVote, submitBallot } from './rooms.ts';
+import type { Deps, ParticipantId, Room, Transition } from './rooms.ts';
 
 type MsgOf<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>;
 
@@ -64,6 +65,12 @@ export class TestClient {
     return msg as MsgOf<T>;
   }
 
+  async expectView<R extends View['role']>(role: R): Promise<Extract<View, { role: R }>> {
+    const { view } = await this.expect('view');
+    if (view.role !== role) throw new Error(`expected a ${role} view, got ${view.role}`);
+    return view as Extract<View, { role: R }>;
+  }
+
   async expectError(reason: string): Promise<void> {
     const msg = await this.expect('error');
     if (msg.reason !== reason) throw new Error(`expected error ${reason}, got ${msg.reason}`);
@@ -91,7 +98,30 @@ export function fakeDeps(codes: string[] = ['1234']): Deps & { tick(ms: number):
     randomCode: () => codes[Math.min(codeIndex++, codes.length - 1)]!,
     randomToken: () => `token-${String(++n).padStart(16, '0')}`,
     randomId: () => `id-${n++}`,
+    shuffle: (items) => [...items].reverse(),
   };
+}
+
+export function must(result: Transition<ErrorReason>): Room {
+  if (!result.ok) throw new Error(`setup refused: ${result.reason}`);
+  return result.room;
+}
+
+export function voteIdOf(room: Room): string {
+  if (room.stage.kind === 'lobby') throw new Error('no vote is open');
+  return room.stage.vote.id;
+}
+
+export const NICKNAMES = ['Alice', 'Bobby', 'Carol', 'Dmitri', 'Elena'] as const;
+
+// Participant i submits contents[i], then the vote closes. With fakeDeps the reveal order is the submission order reversed.
+export function closedRoom(deps: Deps, draft: VoteDraft, contents: readonly BallotContent[]) {
+  const lobby = roomWith(deps, ...NICKNAMES.slice(0, Math.max(contents.length, 1)));
+  const ids: ParticipantId[] = [...lobby.participants.keys()];
+  const voting = must(startVote(deps, lobby, draft));
+  const voteId = voteIdOf(voting);
+  const submitted = contents.reduce((room, content, i) => must(submitBallot(deps, room, ids[i]!, voteId, content)), voting);
+  return { lobby, voting, submitted, closed: must(closeVote(deps, submitted, voteId)), voteId, ids };
 }
 
 export function roomWith(deps: Deps, ...nicknames: string[]): Room {
