@@ -1,173 +1,11 @@
-// Visual and behavior check of the lobby screens against a faked WebSocket server.
+// Visual and behavior check of the lobby and the voting lifecycle against a faked WebSocket server.
 // Run from the project root: node e2e/lobby-visual.mjs
-import { execSync, spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = path.join(ROOT, 'e2e', 'out');
-const ORIGIN = 'http://localhost:5173';
-const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-const SIZES = [
-  { width: 390, height: 844 },
-  { width: 768, height: 1024 },
-  { width: 1280, height: 800 },
-  { width: 1920, height: 1080 },
-];
-
-const failures = [];
-const check = (name, ok, detail = '') => {
-  console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${ok || !detail ? '' : ` (${detail})`}`);
-  if (!ok) failures.push(name);
-};
-
-async function isUp() {
-  try {
-    return (await fetch(ORIGIN)).ok;
-  } catch {
-    return false;
-  }
-}
-
-async function startVite() {
-  if (await isUp()) return null;
-  const child = spawn('npx', ['vite', '--port', '5173', '--strictPort'], { cwd: ROOT, shell: true, stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) {
-    if (await isUp()) return child;
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  throw new Error('vite did not start on 5173');
-}
-
-const stopVite = (child) => {
-  if (!child) return;
-  try {
-    execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: 'ignore' });
-  } catch {
-    child.kill();
-  }
-};
-
-const NAMES = ['민준', '서연', '지후', '도윤', '예은', '시우', '하린', '주원', '채원', '지안', '이안', '유나'];
-const MANY = ['가온', '은우', '세아', '윤호', '지민', '재이', '아린', '단우', '해든', '나래', '보람', '시현', '예준', '라온', '한결', '새봄', '도하', '이레', '우진', '설아', '찬영', '미르', '다인', '건우', '수아', '로운', '태오', '다온', '나은', '현우', '소율', '준서', '유빈', '하준', '서윤', '지율', '이든', '다솔', '별이'];
-const pad = (s) => s.padEnd(24, 'x');
-
-function createFakeRoom() {
-  let seq = 0;
-  const person = (nickname, connected = true) => {
-    seq += 1;
-    return { id: `p${seq}`, token: pad(`tok-p${seq}-`), nickname, connected };
-  };
-  const room = {
-    code: '4827',
-    hostToken: pad('host-token-'),
-    participants: [...NAMES.map((n) => person(n)), person('소율', false), person('가나다라마바사아')],
-    sockets: new Set(),
-    connections: 0,
-    hostResumes: 0,
-    refuse: false,
-  };
-  const summaries = () => room.participants.map(({ id, nickname, connected }) => ({ id, nickname, connected }));
-  const send = (sock, msg) => sock.ws.send(JSON.stringify(msg));
-  const viewFor = (sock) => {
-    if (sock.role === 'host') return { role: 'host', code: room.code, stage: { kind: 'lobby' }, participants: summaries() };
-    const me = room.participants.find((p) => p.id === sock.id);
-    return { role: 'participant', code: room.code, stage: { kind: 'lobby' }, me: { id: me.id, nickname: me.nickname }, participants: summaries() };
-  };
-  room.broadcast = () => {
-    for (const sock of room.sockets) if (sock.role) send(sock, { t: 'view', view: viewFor(sock) });
-  };
-  room.add = (nickname, connected = true) => {
-    room.participants.push(person(nickname, connected));
-    room.broadcast();
-  };
-  room.fill = (count) => {
-    for (const n of MANY) if (room.participants.length < count) room.participants.push(person(n, Math.random() > 0.1));
-    room.broadcast();
-  };
-  room.dropAll = () => {
-    room.refuse = true;
-    for (const sock of [...room.sockets]) sock.ws.close();
-  };
-  room.replace = (nickname) => {
-    const me = room.participants.find((p) => p.nickname === nickname);
-    for (const sock of room.sockets) {
-      if (sock.id !== me.id) continue;
-      send(sock, { t: 'error', reason: 'replaced', message: 'replaced' });
-      sock.ws.close();
-    }
-  };
-
-  room.install = (page) =>
-    page.routeWebSocket('**/ws', (ws) => {
-      const sock = { ws, role: null, id: null };
-      if (room.refuse) {
-        ws.close();
-        return;
-      }
-      room.sockets.add(sock);
-      room.connections += 1;
-      const fail = (reason) => send(sock, { t: 'error', reason, message: reason });
-      ws.onClose(() => {
-        room.sockets.delete(sock);
-        const me = room.participants.find((p) => p.id === sock.id);
-        if (me) {
-          me.connected = false;
-          room.broadcast();
-        }
-      });
-      ws.onMessage((raw) => {
-        const msg = JSON.parse(String(raw));
-        if (msg.t === 'createRoom') {
-          sock.role = 'host';
-          send(sock, { t: 'hosted', hostToken: room.hostToken, view: viewFor(sock) });
-        } else if (msg.t === 'resumeHost') {
-          if (msg.code !== room.code) return fail('room_not_found');
-          if (msg.hostToken !== room.hostToken) return fail('bad_host_token');
-          room.hostResumes += 1;
-          sock.role = 'host';
-          send(sock, { t: 'view', view: viewFor(sock) });
-        } else if (msg.t === 'join') {
-          if (msg.code !== room.code) return fail('room_not_found');
-          let me = msg.participantToken ? room.participants.find((p) => p.token === msg.participantToken) : undefined;
-          if (msg.participantToken && !me) return fail('bad_participant_token');
-          if (!me) {
-            if (room.participants.some((p) => p.nickname === msg.nickname)) return fail('nickname_taken');
-            me = person(msg.nickname);
-            room.participants.push(me);
-          }
-          me.connected = true;
-          sock.role = 'participant';
-          sock.id = me.id;
-          send(sock, { t: 'joined', participantToken: me.token, view: viewFor(sock) });
-          room.broadcast();
-        }
-      });
-    });
-
-  return room;
-}
-
-const byId = (page, id) => page.locator(`[data-testid="${id}"]`);
-
-async function settle(page) {
-  await page.evaluate(() => Promise.race([document.fonts.ready, new Promise((r) => setTimeout(r, 3000))]));
-  await page.waitForTimeout(450);
-}
-
-async function shot(page, name, width) {
-  await settle(page);
-  await page.screenshot({ path: path.join(OUT, `${name}-${width}.png`), fullPage: true });
-}
-
-async function noHorizontalScroll(page, label) {
-  const [scrollWidth, innerWidth] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
-  check(`${label}: no horizontal scroll`, scrollWidth <= innerWidth, `${scrollWidth} > ${innerWidth}`);
-}
-
-const box = async (locator) => (await locator.boundingBox()) ?? { x: 0, y: 0, width: 0, height: 0 };
+import { createFakeRoom } from './fake-server.mjs';
+import { EDGE, ORIGIN, OUT, SIZES, box, byId, check, failures, noHorizontalScroll, settle, shot, startVite, stopVite, watchPage } from './kit.mjs';
+import { runVoteWalk } from './vote-walk.mjs';
 
 async function checkBreakpoints(page, restore) {
   const probe = async (width) => {
@@ -175,13 +13,12 @@ async function checkBreakpoints(page, restore) {
     await page.waitForTimeout(100);
     return page.evaluate(() => {
       const rect = (sel) => document.querySelector(sel).getBoundingClientRect();
-      const visible = (sel) => getComputedStyle(document.querySelector(sel)).display !== 'none';
       const main = rect('.host-main');
       return {
         mainWidth: Math.round(main.width),
         twoColumns: rect('[data-testid="roster"]').top < rect('.join-card').bottom,
-        bottomBar: visible('.bar-bottom'),
-        topActions: visible('.bar-actions'),
+        bottomBar: document.querySelector('.bar-bottom') !== null,
+        topActions: document.querySelector('.bar-actions') !== null,
       };
     });
   };
@@ -202,12 +39,7 @@ async function runWidth(browser, size) {
   const ctx = await browser.newContext({ viewport: size, locale: 'ko-KR' });
   const room = createFakeRoom();
   const problems = [];
-  const watch = (page) => {
-    page.on('pageerror', (e) => problems.push(String(e)));
-    page.on('console', (m) => {
-      if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|ERR_/.test(m.text())) problems.push(m.text());
-    });
-  };
+  const watch = (page) => watchPage(page, problems);
 
   const hostPage = await ctx.newPage();
   watch(hostPage);
@@ -236,11 +68,13 @@ async function runWidth(browser, size) {
   const twoColumns = Math.abs(card.y - roster.y) < 4 && roster.x > card.x + card.width - 4;
   check(`host ${tag}: ${width >= 1024 ? 'two columns' : 'one column'}`, twoColumns === width >= 1024, JSON.stringify({ card, roster }));
   if (width >= 1024) check(`host ${tag}: QR about 240px`, Math.abs(qr.width - 240) < 2, String(qr.width));
-  const topActions = await hostPage.locator('.bar-actions .btn').first().isVisible();
-  const bottomActions = await hostPage.locator('.bar-bottom .btn').first().isVisible();
-  check(`host ${tag}: actions in ${width >= 1024 ? 'top bar' : 'bottom bar'}`, topActions === width >= 1024 && bottomActions === width < 1024);
-  const disabled = await hostPage.locator('button:disabled:visible').count();
-  check(`host ${tag}: both actions disabled`, disabled === 2, String(disabled));
+  const topActions = await hostPage.locator('.bar-actions .btn').count();
+  const bottomActions = await hostPage.locator('.bar-bottom .btn').count();
+  check(`host ${tag}: actions in ${width >= 1024 ? 'top bar' : 'bottom bar'} only`, width >= 1024 ? topActions === 2 && bottomActions === 0 : bottomActions === 2 && topActions === 0, `${topActions}/${bottomActions}`);
+  const disabled = await hostPage.locator('button:disabled').allInnerTexts();
+  check(`host ${tag}: only the big-screen action is disabled in the lobby`, disabled.length === 1 && disabled[0] === '대화면 열기', disabled.join(','));
+  check(`host ${tag}: open-composer enabled`, await byId(hostPage, 'open-composer').isEnabled());
+  check(`host ${tag}: lobby roster items carry data-submitted=false`, (await hostPage.locator('[data-testid="roster-item"][data-submitted="false"]').count()) === (await byId(hostPage, 'roster-item').count()));
   await shot(hostPage, 'host-lobby', width);
   await settle(hostPage);
   await hostPage.screenshot({ path: path.join(OUT, `host-lobby-viewport-${width}.png`) });
@@ -310,7 +144,6 @@ async function runWidth(browser, size) {
   await shot(partPage, 'participant-replaced', width);
   await ctx.close();
 
-  // Error screens in a fresh storage
   const errCtx = await browser.newContext({ viewport: size, locale: 'ko-KR' });
   const taken = await errCtx.newPage();
   watch(taken);
@@ -352,7 +185,10 @@ const vite = await startVite();
 let browser;
 try {
   browser = await chromium.launch({ executablePath: EDGE, headless: true });
-  for (const size of SIZES) await runWidth(browser, size);
+  for (const size of SIZES) {
+    await runWidth(browser, size);
+    await runVoteWalk(browser, size);
+  }
 } finally {
   await browser?.close();
   stopVite(vite);
