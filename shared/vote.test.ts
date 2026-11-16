@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeBallotContent, normalizeVoteDraft, type Paper, type VoteDraft } from './vote.ts';
+import { normalizeBallotContent, normalizeVoteDraft, type BallotContent, type Paper, type VoteDraft } from './vote.ts';
 
 const choice = (options: string[]): VoteDraft => ({ title: '점심', paper: { kind: 'choice', options }, anonymity: 'anonymous' });
 
@@ -54,5 +54,18 @@ describe('normalizeBallotContent', () => {
   it('checks the option index against the options', () => {
     expect(normalizeBallotContent({ kind: 'choice', optionIndex: 2 }, pick)).toEqual({ kind: 'choice', optionIndex: 2 });
     expect(normalizeBallotContent({ kind: 'choice', optionIndex: 3 }, pick)).toBeNull();
+  });
+
+  it('accepts handwriting on a free-form paper and rejects it on a choice paper', () => {
+    const ink: BallotContent = { kind: 'ink', strokes: [{ w: 'thin', pts: [10, 20, 30, 40] }] };
+    expect(normalizeBallotContent(ink, free)).toEqual({ kind: 'ink', strokes: [{ w: 'thin', pts: [10, 20, 30, 40] }] });
+    expect(normalizeBallotContent(ink, pick)).toBeNull();
+  });
+
+  it('rejects empty handwriting, out-of-bounds x, and too many points', () => {
+    expect(normalizeBallotContent({ kind: 'ink', strokes: [] }, free)).toBeNull();
+    expect(normalizeBallotContent({ kind: 'ink', strokes: [{ w: 'thin', pts: [1001, 20, 30, 40] }] }, free)).toBeNull();
+    const many = Array.from({ length: 3 }, () => ({ w: 'thick' as const, pts: Array.from({ length: 4000 }, (_, i) => i % 1000) }));
+    expect(normalizeBallotContent({ kind: 'ink', strokes: many }, free)).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
-import { TEXT_MAX } from '../../../shared/vote.ts';
 import type { VotePublic } from '../../../shared/protocol.ts';
 import type { BallotDraft } from '../ballot.ts';
+import { FreeformPaper } from './FreeformPaper.tsx';
 
 interface BallotPaperProps {
   vote: VotePublic;
@@ -19,27 +19,8 @@ export function BallotPaper({ vote, signature, draft, onChange }: BallotPaperPro
   const { paper } = vote;
   const sign = signature === null ? null : <span className="sig">— {signature}</span>;
 
-  if (paper.kind === 'freeform' && draft.kind === 'text') {
-    return (
-      <div className="paper-wrap">
-        <div className="paper">
-          <div className={signature === null ? 'sheet' : 'sheet signed'}>
-            <textarea
-              data-testid="ballot-text"
-              aria-label="투표 용지"
-              placeholder="여기에 적어 주세요"
-              maxLength={TEXT_MAX}
-              value={draft.text}
-              onChange={(event) => onChange({ kind: 'text', text: event.target.value })}
-            />
-            {sign}
-          </div>
-        </div>
-        <p className="count" data-testid="ballot-count">
-          {[...draft.text].length} / {TEXT_MAX}
-        </p>
-      </div>
-    );
+  if (paper.kind === 'freeform' && draft.kind === 'freeform') {
+    return <FreeformPaper draft={draft} signed={signature !== null} sign={sign} onChange={onChange} />;
   }
 
   if (paper.kind === 'choice' && draft.kind === 'choice') {

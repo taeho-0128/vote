@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { inkSchema, normalizeInk } from './ink.ts';
 import { nicknameKey } from './nickname.ts';
 
 export const TITLE_MAX = 60;
@@ -22,6 +23,7 @@ export const voteDraftSchema = z.object({
 
 export const ballotContentSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('text'), text: z.string().max(2000) }),
+  z.object({ kind: z.literal('ink'), strokes: inkSchema }),
   z.object({ kind: z.literal('choice'), optionIndex: z.number().int().min(0).max(OPTIONS_MAX - 1) }),
 ]);
 
@@ -54,6 +56,10 @@ export function normalizeVoteDraft(draft: VoteDraft): NormalizedDraft {
 
 export function normalizeBallotContent(content: BallotContent, paper: Paper): BallotContent | null {
   if (paper.kind === 'freeform') {
+    if (content.kind === 'ink') {
+      const strokes = normalizeInk(content.strokes);
+      return strokes ? { kind: 'ink', strokes } : null;
+    }
     if (content.kind !== 'text') return null;
     const text = content.text
       .normalize('NFC')

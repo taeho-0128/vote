@@ -60,12 +60,21 @@ describe('websocket endpoint', () => {
     expect(outcome).toBe('error');
   });
 
-  it('closes a connection that sends more than 4096 bytes', async () => {
+  it('closes a connection that sends a message over the size cap', async () => {
+    server = await startServer({ port: 0 });
+    const client = await TestClient.connect(server.port);
+    clients.push(client);
+    client.send('x'.repeat(70_000));
+    expect(await client.closed).toBe(1009);
+  });
+
+  it('keeps a connection open for a 5000-byte message, which the old 4096-byte cap refused', async () => {
     server = await startServer({ port: 0 });
     const client = await TestClient.connect(server.port);
     clients.push(client);
     client.send('x'.repeat(5000));
-    expect(await client.closed).toBe(1009);
+    await client.expectError('bad_message');
+    expect(client.ws.readyState).toBe(WebSocket.OPEN);
   });
 
   it('terminates a client that stops answering pings and tells the others', async () => {

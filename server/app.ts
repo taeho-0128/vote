@@ -7,7 +7,8 @@ import { systemDeps } from './deps.ts';
 import { createHub } from './hub.ts';
 import { RoomStore } from './rooms.ts';
 
-const MAX_PAYLOAD_BYTES = 4096;
+// A full sheet of ink (5000 points, four-digit coordinates) is about 57 KB of JSON.
+export const MAX_PAYLOAD_BYTES = 65_536;
 
 export interface ServerOptions {
   port: number;

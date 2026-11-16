@@ -448,3 +448,103 @@
 .opt input:checked ~ .ring path {
   stroke-dashoffset: 0;
 }
+
+/* ---------- 쓰기와 타이핑 ---------- */
+/* The paper shrinks until the title, the tools and the submit bar fit under it. A phone never goes below 250px and a
+   larger screen never below 320px, so the paper stays comfortable to write on even when the page has to scroll. */
+.paper-wrap--free {
+  --paper-w: min(100%, 420px, max(250px, calc((100dvh - 470px) * 0.75)));
+  width: var(--paper-w);
+  margin: 0 auto;
+}
+
+@media (min-width: 720px) {
+  .paper-wrap--free {
+    --paper-w: min(100%, 420px, max(320px, calc((100dvh - 470px) * 0.75)));
+  }
+}
+
+.paper-wrap--free .paper {
+  width: 100%;
+}
+
+.ink-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--ruled) 0 calc(var(--ls) * 0.45);
+  color: var(--paper-ink);
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.tools {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  max-width: 100%;
+}
+
+.tools-gap {
+  flex: none;
+  width: 6px;
+}
+
+.tool {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r);
+  background: var(--tool);
+  box-shadow: inset 0 0 0 1.5px var(--chip-line);
+  color: var(--tool-ink);
+  transition: background 0.15s, color 0.15s;
+}
+
+.tool:hover:not(:disabled):not([aria-pressed='true']) {
+  background: var(--chip);
+}
+
+.tool[aria-pressed='true'] {
+  background: var(--tool-on);
+  box-shadow: none;
+  color: var(--tool-on-ink);
+}
+
+.tool.plain {
+  background: transparent;
+  box-shadow: none;
+}
+
+.tool.plain:hover:not(:disabled) {
+  background: var(--chip);
+}
+
+.tool:disabled {
+  opacity: 0.35;
+}
+
+.ink-full {
+  padding: 10px 12px;
+  border-left: 4px solid var(--accent);
+  border-radius: 0 var(--r) var(--r) 0;
+  background: var(--warn-bg);
+  font-size: 15px;
+  font-weight: 700;
+  word-break: keep-all;
+  text-wrap: balance;
+}
+
+.mode-hint {
+  font-size: 14px;
+  text-align: center;
+  word-break: keep-all;
+  text-wrap: balance;
+}

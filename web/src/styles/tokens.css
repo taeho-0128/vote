@@ -27,6 +27,12 @@
   --seg-bg: #dfe5db;
   --seg-on: #fff;
 
+  --tool: #fff;
+  --tool-ink: #14211b;
+  --tool-on: #1b5e47;
+  --tool-on-ink: #fff;
+  --warn-bg: #fff6cf;
+
   --paper: #f8f2e2;
   --paper-line: rgba(60, 90, 130, 0.26);
   --paper-ink: #1d2330;

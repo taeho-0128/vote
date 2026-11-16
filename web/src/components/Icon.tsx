@@ -21,6 +21,25 @@ const PATHS = {
       <path d="M14.5 6.5l3 3" />
     </>
   ),
+  eraser: (
+    <>
+      <path d="M8 20h11" />
+      <path d="M5.2 15.2L14 6.4a2 2 0 012.8 0l2.8 2.8a2 2 0 010 2.8L11.6 20H8l-2.8-2.8a2 2 0 010-2z" />
+    </>
+  ),
+  undo: (
+    <>
+      <path d="M9 7L4 12l5 5" />
+      <path d="M4 12h10a5 5 0 010 9h-3" />
+    </>
+  ),
+  trash: (
+    <>
+      <path d="M5 7h14" />
+      <path d="M10 7V4h4v3" />
+      <path d="M7 7l1 13h8l1-13" />
+    </>
+  ),
   eyeoff: (
     <>
       <path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z" />
@@ -30,7 +49,7 @@ const PATHS = {
   ),
 } as const;
 
-export function Icon({ name, size = 18 }: { name: keyof typeof PATHS; size?: number }) {
+export function Icon({ name, size = 18, weight = 1.9 }: { name: keyof typeof PATHS; size?: number; weight?: number }) {
   return (
     <svg
       className="ic"
@@ -39,7 +58,7 @@ export function Icon({ name, size = 18 }: { name: keyof typeof PATHS; size?: num
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.9}
+      strokeWidth={weight}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
