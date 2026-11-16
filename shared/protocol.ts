@@ -81,6 +81,7 @@ export const hostViewSchema = z.object({
   role: z.literal('host'),
   code: roomCodeSchema,
   displayToken: tokenSchema,
+  expiresInMs: z.number().int().nonnegative(),
   stage: hostStageSchema,
   participants: z.array(hostParticipantSchema),
 });
@@ -118,6 +119,7 @@ export const clientMsgSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('revealMove'), voteId: z.string(), cursor: z.number().int().min(-1) }),
   z.object({ t: z.literal('revealMode'), voteId: z.string(), mode: revealModeSchema }),
   z.object({ t: z.literal('setHidden'), voteId: z.string(), hidden: z.boolean() }),
+  z.object({ t: z.literal('keepAlive') }),
 ]);
 
 export const errorReasonSchema = z.enum([
@@ -139,6 +141,8 @@ export const errorReasonSchema = z.enum([
   'bad_ballot',
   'already_submitted',
   'bad_reveal',
+  'rate_limited',
+  'room_expired',
 ]);
 
 export const serverMsgSchema = z.discriminatedUnion('t', [
