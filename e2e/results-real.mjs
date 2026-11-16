@@ -4,6 +4,7 @@
 import { spawn } from 'node:child_process';
 import { chromium } from 'playwright-core';
 import { EDGE, byId, check, failures } from './kit.mjs';
+import { dismissVote } from './results-kit.mjs';
 
 const PORT = 3102;
 const BASE = `http://localhost:${PORT}`;
@@ -98,7 +99,7 @@ try {
   await byId(host, 'confirm-close').click({ timeout: 1500 }).catch(() => undefined);
   await byId(host, 'result-pile').waitFor();
   await byId(displayPage, 'display-pile').waitFor();
-  check('real: close opens the folded pile on the host and the display', (await text(host, 'result-position')) === '0 / 3');
+  check('real: close opens the folded pile on the host and the display', (await text(host, 'result-position')) === '- / 3');
 
   const seen = [];
   for (let n = 1; n <= 3; n++) {
@@ -133,7 +134,7 @@ try {
   check('real: the writer is not on the display', NICKS.every((nick) => !displayHtml.includes(nick)));
   await byId(host, 'result-prev').click();
   await wait(host, 'result-position', '2 / 3');
-  await byId(host, 'dismiss-vote').click();
+  await dismissVote(host);
   await byId(host, 'open-composer').waitFor();
   await byId(displayPage, 'display-lobby').waitFor();
 

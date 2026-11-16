@@ -89,6 +89,7 @@ try {
   check('the ballot form is gone after closing', (await c.page.getByTestId('ballot-text').count()) === 0);
 
   await host.getByTestId('dismiss-vote').click();
+  await host.getByTestId('export-confirm-skip').click({ timeout: 2500 }).catch(() => {});
   await host.getByTestId('open-composer').click();
   await host.getByTestId('vote-title').fill('오늘 점심은?');
   await host.getByTestId('paper-choice').click();

@@ -7,6 +7,7 @@ import { ballotContentSchema, normalizeBallotContent } from '../shared/vote.ts';
 const NAMES = ['민준', '서연', '지후', '도윤', '예은', '시우', '하린', '주원', '채원', '지안', '이안', '유나'];
 const MANY = ['가온', '은우', '세아', '윤호', '지민', '재이', '아린', '단우', '해든', '나래', '보람', '시현', '예준', '라온', '한결', '새봄', '도하', '이레', '우진', '설아', '찬영', '미르', '다인', '건우', '수아', '로운', '태오', '다온', '나은', '현우', '소율', '준서', '유빈', '하준', '서윤', '지율', '이든', '다솔', '별이'];
 const pad = (s) => s.padEnd(24, 'x');
+const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 
 // A fixed shuffle so a walk knows which paper comes up at each position without reading the page.
 function shuffled(ids, seed = 7) {
@@ -61,6 +62,10 @@ export function createFakeRoom() {
     received: [],
     refuseNext: null,
     latency: 0,
+    expiresIn: SIX_HOURS_MS,
+    gone: false,
+    limitHello: null,
+    helloAttempts: 0,
   };
 
   const summaries = () => room.participants.map(({ id, nickname, connected }) => ({ id, nickname, connected }));
@@ -113,7 +118,14 @@ export function createFakeRoom() {
   const viewFor = (sock) => {
     if (sock.role === 'host') {
       const participants = summaries().map((p) => ({ ...p, submitted: room.ballots.has(p.id) }));
-      return { role: 'host', code: room.code, displayToken: room.displayToken, stage: hostStage(), participants };
+      return {
+        role: 'host',
+        code: room.code,
+        displayToken: room.displayToken,
+        expiresInMs: room.expiresIn,
+        stage: hostStage(),
+        participants,
+      };
     }
     if (sock.role === 'display') return { role: 'display', code: room.code, stage: displayStage() };
     const me = room.participants.find((p) => p.id === sock.id);
@@ -140,6 +152,26 @@ export function createFakeRoom() {
   room.dropAll = () => {
     room.refuse = true;
     for (const sock of [...room.sockets]) sock.ws.close();
+  };
+  // What the idle sweep does: tell every socket on the room, close it, and from then on know nothing about the code.
+  room.expire = () => {
+    room.gone = true;
+    for (const sock of [...room.sockets]) {
+      send(sock, { t: 'error', reason: 'room_expired', message: 'room_expired' });
+      sock.ws.close();
+    }
+  };
+  // The server's remaining time for the host view, sent to the hosts at once.
+  room.setExpiresIn = (ms) => {
+    room.expiresIn = ms;
+    room.broadcast();
+  };
+  // Every join, watch and resumeHost is refused with this message until it is cleared.
+  room.limit = (message = 'rate_limited') => {
+    room.limitHello = message;
+  };
+  room.unlimit = () => {
+    room.limitHello = null;
   };
   room.replace = (nickname) => {
     const me = room.participants.find((p) => p.nickname === nickname);
@@ -212,6 +244,9 @@ export function createFakeRoom() {
       room.vote = null;
       room.ballots = new Map();
       room.reveal = null;
+    } else if (msg.t === 'keepAlive') {
+      if (sock.role !== 'host') return fail('not_host');
+      room.expiresIn = SIX_HOURS_MS;
     } else if (msg.t === 'submitBallot') {
       if (sock.role !== 'participant') return fail('not_bound');
       if (room.stage !== 'voting') return fail('wrong_stage');
@@ -232,7 +267,7 @@ export function createFakeRoom() {
       }
       room.sockets.add(sock);
       room.connections += 1;
-      const fail = (reason) => send(sock, { t: 'error', reason, message: reason });
+      const fail = (reason, message = reason) => send(sock, { t: 'error', reason, message });
       ws.onClose(() => {
         room.sockets.delete(sock);
         const me = room.participants.find((p) => p.id === sock.id);
@@ -243,6 +278,11 @@ export function createFakeRoom() {
       });
       ws.onMessage((raw) => {
         const msg = JSON.parse(String(raw));
+        if (msg.t === 'resumeHost' || msg.t === 'watch' || msg.t === 'join') {
+          room.helloAttempts += 1;
+          if (room.limitHello !== null) return fail('rate_limited', room.limitHello);
+          if (room.gone) return fail('room_not_found');
+        }
         if (msg.t === 'createRoom') {
           sock.role = 'host';
           send(sock, { t: 'hosted', hostToken: room.hostToken, view: viewFor(sock) });

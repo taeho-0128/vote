@@ -127,10 +127,16 @@ export async function closeVote(host) {
 export async function stepTo(host, target) {
   await host.evaluate(() => document.activeElement?.blur());
   for (let guard = 0; guard < 40; guard++) {
-    const now = Number.parseInt(await textOf(host, 'result-position'), 10);
+    const now = Number.parseInt((await textOf(host, 'result-position')).replace(/^-/, '0'), 10);
     if (now === target) return;
     await host.keyboard.press(now < target ? 'ArrowRight' : 'ArrowLeft');
     await waitText(host, 'result-position', `${now + (now < target ? 1 : -1)} / ${(await textOf(host, 'result-position')).split(' / ')[1]}`);
   }
   throw new Error(`could not reach position ${target}`);
+}
+
+// "새 투표 만들기" asks first when the closed vote was never exported. The walks that are not about export skip the question.
+export async function dismissVote(page) {
+  await byId(page, 'dismiss-vote').click();
+  await byId(page, 'export-confirm-skip').click({ timeout: 1200 }).catch(() => undefined);
 }

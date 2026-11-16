@@ -121,6 +121,7 @@ try {
   check('no token or author id reached a display after the lobby', afterLobby.every((t) => !/"hostToken"|"participantToken"|"displayToken"|"author"/.test(t)));
 
   await host.getByTestId('dismiss-vote').click();
+  await host.getByTestId('export-confirm-skip').click({ timeout: 2500 }).catch(() => {});
   await host.getByTestId('open-composer').click();
   await host.getByTestId('vote-title').fill('오늘 점심은?');
   await host.getByTestId('paper-choice').click();

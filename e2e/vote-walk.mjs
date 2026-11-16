@@ -1,6 +1,7 @@
 // The voting lifecycle, walked with a host and three participants against the fake server:
 // compose, start, write and submit both papers, close, dismiss, plus every refusal the screens handle.
 import { createFakeRoom } from './fake-server.mjs';
+import { dismissVote } from './results-kit.mjs';
 import { ORIGIN, box, byId, check, joinAs, noHorizontalScroll, shot, watchPage } from './kit.mjs';
 
 const OFFLINE = '연결이 끊겨서 보내지 못했어요';
@@ -237,7 +238,7 @@ export async function runVoteWalk(browser, size) {
   await byId(host, 'confirm-close').click();
   await byId(host, 'closed-count').waitFor();
   check(`host ${tag}: closed shows the ballot count as a bare number`, (await text(host, 'closed-count')) === '10', await text(host, 'closed-count'));
-  check(`host ${tag}: closed opens the results at the folded pile`, (await text(host, 'result-position')) === '0 / 10' && (await count(host, 'result-pile')) === 1);
+  check(`host ${tag}: closed opens the results at the folded pile`, (await text(host, 'result-position')) === '- / 10' && (await count(host, 'result-pile')) === 1);
   check(`host ${tag}: closed actions`, (await count(host, 'dismiss-vote')) === 1 && (await count(host, 'close-vote')) === 0 && (await count(host, 'command-error')) === 0);
   check(`host ${tag}: the results screen replaces the roster`, (await count(host, 'roster')) === 0);
   await noHorizontalScroll(host, `host closed ${tag}`);
@@ -253,10 +254,10 @@ export async function runVoteWalk(browser, size) {
   await shot(pageB, 'vote-closed-participant', width);
 
   room.refuseNext = 'wrong_stage';
-  await byId(host, 'dismiss-vote').click();
+  await dismissVote(host);
   await byId(host, 'command-error').waitFor();
   check(`refusal ${tag}: dismiss refused shows a message and the button works again`, await byId(host, 'dismiss-vote').isEnabled());
-  await byId(host, 'dismiss-vote').click();
+  await dismissVote(host);
   await byId(host, 'open-composer').waitFor();
   check(`host ${tag}: dismiss returns to the lobby with a clean slate`, (await count(host, 'command-error')) === 0 && (await count(host, 'vote-title')) === 0 && (await count(host, 'qr')) === 1 && (await byId(host, 'qr').isVisible()));
   await pageB.getByText('운영자가 투표를 만드는 중이에요.').waitFor();
@@ -335,7 +336,7 @@ export async function runVoteWalk(browser, size) {
   await byId(host, 'closed-count').waitFor();
   check(`host ${tag}: no confirm when nobody is pending`, !(await byId(host, 'confirm-close').isVisible()));
   check(`host ${tag}: closed-count matches ballots`, (await text(host, 'closed-count')) === String(room.participants.length));
-  await byId(host, 'dismiss-vote').click();
+  await dismissVote(host);
   await byId(host, 'open-composer').waitFor();
 
   await composeVote(host, { title: '이번 주 한 줄 소감', kind: 'freeform', anonymity: 'named' });

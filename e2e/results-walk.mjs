@@ -5,7 +5,7 @@
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
-import { NICKS, OPTIONS, TEXTS, authorAt, clearRecorded, closeVote, composeVote, contentText, found, newRoom, openDisplay, openHost, orderedContent, recorded, stepTo, textOf, waitRest, waitText, wholePage } from './results-kit.mjs';
+import { NICKS, OPTIONS, TEXTS, authorAt, clearRecorded, closeVote, composeVote, dismissVote, contentText, found, newRoom, openDisplay, openHost, orderedContent, recorded, stepTo, textOf, waitRest, waitText, wholePage } from './results-kit.mjs';
 import { EDGE, ORIGIN, OUT, byId, check, failures, settle, startViteNode, stopVite } from './kit.mjs';
 
 const OFFLINE = '연결이 끊겨서 보내지 못했어요';
@@ -131,7 +131,7 @@ async function runFreeform(browser) {
   await closeVote(H);
   await byId(H, 'result-pile').waitFor();
   const total = 8;
-  check('host results: the pile shows 0 / 8, previous is off, next is on', (await textOf(H, 'result-position')) === `0 / ${total}` && (await byId(H, 'result-prev').isDisabled()) && (await byId(H, 'result-next').isEnabled()));
+  check('host results: the pile shows - / 8, previous is off, next is on', (await textOf(H, 'result-position')) === `- / ${total}` && (await byId(H, 'result-prev').isDisabled()) && (await byId(H, 'result-next').isEnabled()));
   check('host results: a free-form vote offers no 전체 공개', (await byId(H, 'reveal-all').count()) === 0);
   check('host results: switches start off and 작성자 보기 is local', (await byId(H, 'toggle-hidden').getAttribute('aria-checked')) === 'false' && (await byId(H, 'toggle-author').getAttribute('aria-checked')) === 'false' && (await byId(H, 'toggle-author').getAttribute('role')) === 'switch');
   check('host results: the shuffled order is not the submission order', room.reveal.order.join() !== room.participants.filter((p) => room.ballots.has(p.id)).map((p) => p.id).join());
@@ -372,7 +372,7 @@ async function runFreeform(browser) {
 
   check('freeform walk: page errors', problems.length === 0, problems.join(' | '));
 
-  await byId(H, 'dismiss-vote').click();
+  await dismissVote(H);
   await byId(H, 'open-composer').waitFor();
   for (const page of D) await byId(page, 'display-lobby').waitFor();
   check('dismiss: both displays are back on the lobby', (await byId(D[0], 'display-paper').count()) === 0 && (await byId(D[1], 'display-code').isVisible()));
@@ -438,7 +438,7 @@ async function runChoice(browser) {
   await byId(H, 'result-paper').waitFor();
   check('graph: 다시 한 장씩 보기 returns to the paper where it was', (await textOf(H, 'result-position')) === '1 / 7' && (await byId(D[0], 'display-graph').count()) === 0);
 
-  await byId(H, 'dismiss-vote').click();
+  await dismissVote(H);
   await byId(H, 'open-composer').waitFor();
 
   await composeVote(H, { title: '가장 많이 먹는 날은?', kind: 'choice', anonymity: 'anonymous', options: ['월', '화', '수', '목', '금', '토', '일', '공휴일'] });
@@ -451,7 +451,7 @@ async function runChoice(browser) {
   await displayFits(D[1], 'display 8-option graph 1280x720');
   await shotDisplays(D[0], D[1], 'graph8');
   await shotHost(H, 'graph8');
-  await byId(H, 'dismiss-vote').click();
+  await dismissVote(H);
   await byId(H, 'open-composer').waitFor();
 
   check('choice walk: page errors', problems.length === 0, problems.join(' | '));
@@ -491,7 +491,7 @@ async function runEdges(browser) {
   await shotDisplays(ed2.page, ed.page, 'voting-longtitle');
   await shotHost(eh.page, 'voting-longtitle');
   await closeVote(eh.page);
-  check('one ballot: 0 / 1, previous off, next on', (await textOf(eh.page, 'result-position')) === '0 / 1' && (await byId(eh.page, 'result-prev').isDisabled()) && (await byId(eh.page, 'result-next').isEnabled()));
+  check('one ballot: - / 1, previous off, next on', (await textOf(eh.page, 'result-position')) === '- / 1' && (await byId(eh.page, 'result-prev').isDisabled()) && (await byId(eh.page, 'result-next').isEnabled()));
   await shotDisplays(ed2.page, ed.page, 'one-pile');
   await shotHost(eh.page, 'one-pile');
   await byId(eh.page, 'result-next').click();
