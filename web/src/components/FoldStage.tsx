@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import type { BallotContent, Paper } from '../../../shared/vote.ts';
 import { playFold } from '../foldTimeline.ts';
 import type { PaperRect } from '../submitFlow.ts';
-import { PaperFace } from './PaperFace.tsx';
+import { FoldPieces } from './FoldPieces.tsx';
 
 export type StageMode =
   | {
@@ -79,35 +79,12 @@ export function FoldStage({ mode, count, children }: FoldStageProps) {
     <div className="scene" ref={scene} data-step={folding ? 'paper' : 'rest'}>
       <div className="scene-in">
         {mode.kind === 'folding' ? (
-          <>
-            <div className="fold-paper" ref={paper} aria-hidden="true">
-              <div className="fold-bot">
-                <div className="fold-bot-face">
-                  <PaperFace content={mode.content} paper={mode.paper} signature={mode.signature} />
-                </div>
-              </div>
-              <div className="fold-top" ref={top}>
-                <div className="fold-face">
-                  <PaperFace content={mode.content} paper={mode.paper} signature={mode.signature} />
-                </div>
-                <div className="fold-back back-side">
-                  <i className="crease-h" />
-                </div>
-              </div>
-            </div>
-            <div className="fold-strip" aria-hidden="true">
-              <div className="fold-strip-r back-side">
-                <i className="crease-v" />
-              </div>
-              <div className="fold-flap" ref={flap}>
-                <i className="back-side" />
-                <i className="back-side" />
-              </div>
-            </div>
-            <div className="fold-slip back-side" ref={slip} aria-hidden="true">
-              <i className="crease-v" />
-            </div>
-          </>
+          <FoldPieces
+            content={mode.content}
+            paper={mode.paper}
+            signature={mode.signature}
+            refs={{ paper, top, flap, slip }}
+          />
         ) : null}
         <div className="box" ref={box} data-testid="ballot-box" role="img" aria-label={`투표함, ${shown}장`}>
           <div className="box-lid">

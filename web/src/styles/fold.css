@@ -237,12 +237,16 @@
 
 .scene[data-step='strip'] .fold-paper,
 .scene[data-step='slip'] .fold-paper,
-.scene[data-step='landed'] .fold-paper {
+.scene[data-step='landed'] .fold-paper,
+.unfold[data-step='strip'] .fold-paper,
+.unfold[data-step='slip'] .fold-paper {
   visibility: hidden;
 }
 
 .scene[data-step='strip'] .fold-strip,
-.scene[data-step='slip'] .fold-slip {
+.scene[data-step='slip'] .fold-slip,
+.unfold[data-step='strip'] .fold-strip,
+.unfold[data-step='slip'] .fold-slip {
   visibility: visible;
 }
 

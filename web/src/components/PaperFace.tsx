@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { CSSProperties } from 'react';
 import { INK_HEIGHT, INK_WIDTH } from '../../../shared/ink.ts';
 import type { BallotContent, Paper } from '../../../shared/vote.ts';
@@ -15,6 +16,7 @@ interface PaperFaceProps {
   paper: Paper;
   // The nickname signed at the bottom of a named vote's paper.
   signature: string | null;
+  signatureId?: string;
 }
 
 function Ink({ strokes }: { strokes: Extract<BallotContent, { kind: 'ink' }>['strokes'] }) {
@@ -50,7 +52,8 @@ function Options({ options, chosen }: { options: readonly string[]; chosen: numb
 
 // What a ballot says, on the same 3:4 ruled paper the participant wrote it on. It fills the width of its parent and
 // sizes everything from that width, so the stage, the results and a projector all use it unchanged.
-export function PaperFace({ content, paper, signature }: PaperFaceProps) {
+// Memoized because the host's view arrives again on every reveal command, and an unchanged paper must not redraw its strokes.
+export const PaperFace = memo(function PaperFace({ content, paper, signature, signatureId }: PaperFaceProps) {
   const signed = signature !== null;
   const typed = content.kind === 'text' ? (textFitStyle(fitText(content.text, signed), signed) as CSSProperties) : undefined;
   return (
@@ -61,8 +64,12 @@ export function PaperFace({ content, paper, signature }: PaperFaceProps) {
         {content.kind === 'choice' && paper.kind === 'choice' ? (
           <Options options={paper.options} chosen={content.optionIndex} />
         ) : null}
-        {signature === null ? null : <span className="pface-sig">— {signature}</span>}
+        {signature === null ? null : (
+          <span className="pface-sig" data-testid={signatureId}>
+            — {signature}
+          </span>
+        )}
       </div>
     </div>
   );
-}
+});

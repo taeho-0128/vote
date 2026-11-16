@@ -44,6 +44,16 @@
   --paper-shadow: 0 1px 1px rgba(40, 30, 10, 0.2), 0 8px 18px rgba(40, 30, 10, 0.18);
   --paper-back: #efe7d1;
 
+  --stage: #1b5e47;
+  --stage-ink: #fff;
+  --stage-ink-2: #cfe5d9;
+  --stage-chip: rgba(255, 255, 255, 0.16);
+  --stage-line: rgba(255, 255, 255, 0.6);
+  --stage-track: rgba(255, 255, 255, 0.18);
+  --stage-bar: rgba(255, 255, 255, 0.88);
+  --stage-lead: #f5c518;
+  --stage-lead-ink: #14211b;
+
   --box-body: #aab5b0;
   --box-body-2: #869590;
   --box-lid: #c5cec9;
@@ -62,4 +72,23 @@
   --shadow-1: 0 1px 2px rgba(20, 33, 27, 0.16), 0 2px 6px rgba(20, 33, 27, 0.08);
 
   --appbar-h: 56px;
+}
+
+/* Typed, so a length built from container units is worked out where it is declared and not where it is used. */
+@property --u {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 8px;
+}
+
+@property --pw {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 200px;
+}
+
+@property --sw {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 80px;
 }

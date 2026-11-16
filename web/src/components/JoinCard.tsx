@@ -1,56 +1,7 @@
-import { useMemo, useState } from 'react';
-import { create } from 'qrcode';
+import { useState } from 'react';
+import { copyText } from '../clipboard.ts';
 import { Icon } from './Icon.tsx';
-
-const QUIET_ZONE = 3;
-
-function QrCode({ text }: { text: string }) {
-  const { size, path } = useMemo(() => {
-    const { modules } = create(text, { errorCorrectionLevel: 'M' });
-    let d = '';
-    for (let row = 0; row < modules.size; row++) {
-      for (let col = 0; col < modules.size; col++) {
-        if (modules.get(row, col)) d += `M${col} ${row}h1v1h-1z`;
-      }
-    }
-    return { size: modules.size, path: d };
-  }, [text]);
-  const span = size + QUIET_ZONE * 2;
-  return (
-    <svg
-      viewBox={`${-QUIET_ZONE} ${-QUIET_ZONE} ${span} ${span}`}
-      shapeRendering="crispEdges"
-      role="img"
-      aria-label="입장용 QR 코드"
-    >
-      <rect x={-QUIET_ZONE} y={-QUIET_ZONE} width={span} height={span} fill="#fff" />
-      <path d={path} fill="#111" />
-    </svg>
-  );
-}
-
-// Clipboard needs a secure context, and the app is often opened over plain http on a LAN while testing.
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const area = document.createElement('textarea');
-    area.value = text;
-    area.setAttribute('readonly', '');
-    area.style.position = 'fixed';
-    area.style.opacity = '0';
-    document.body.append(area);
-    area.select();
-    try {
-      return document.execCommand('copy');
-    } catch {
-      return false;
-    } finally {
-      area.remove();
-    }
-  }
-}
+import { QrCode } from './QrCode.tsx';
 
 type CopyState = 'idle' | 'copied' | 'failed';
 
@@ -66,7 +17,7 @@ function JoinBody({ code }: { code: string }) {
   return (
     <div className="join-body">
       <div className="qr" data-testid="qr">
-        <QrCode text={url} />
+        <QrCode text={url} label="입장용 QR 코드" />
       </div>
       <div className="join-info">
         <p className="sub">QR을 찍거나 방 코드를 입력하세요</p>

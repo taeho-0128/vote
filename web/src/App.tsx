@@ -1,6 +1,7 @@
 import { AppBar, Notice } from './components/Frame.tsx';
 import { useRoute } from './route.ts';
 import { HostScreen } from './screens/HostScreen.tsx';
+import { DisplayScreen } from './screens/DisplayScreen.tsx';
 import { Home } from './screens/Home.tsx';
 import { ParticipantScreen } from './screens/ParticipantScreen.tsx';
 
@@ -13,6 +14,8 @@ export function App() {
       return <ParticipantScreen key={route.code} code={route.code} />;
     case 'host':
       return <HostScreen key={route.code} code={route.code} />;
+    case 'display':
+      return <DisplayScreen key={`${route.code}/${route.token}`} code={route.code} token={route.token} />;
     case 'not-found':
       return (
         <div className="app">

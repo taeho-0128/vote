@@ -1,0 +1,606 @@
+/* ---------- 결과 무대 ---------- */
+/* One stage for the host's results and the display. Its size comes from outside. --pw, the paper's width, is declared on
+   the child because a container's own length units measure the container above it. */
+.rstage {
+  container-type: size;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--stage);
+  color: var(--stage-ink);
+}
+
+.rstage-in {
+  --pw: min(68cqw, 66cqh);
+  --sw: max(0px, min(calc(var(--pw) * 0.42), calc((100cqw - var(--pw)) / 2 - 3cqw), 22cqw));
+  position: absolute;
+  inset: 0;
+}
+
+.rlayer {
+  position: absolute;
+  inset: 0;
+  width: var(--pw);
+  height: calc(var(--pw) * 4 / 3);
+  margin: auto;
+}
+
+.rlayer--ghost {
+  pointer-events: none;
+}
+
+.rface {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* ---------- 용지 더미 ---------- */
+.slip {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: var(--paper-back);
+  box-shadow:
+    inset 0 0 calc(var(--sw) * 0.14) rgba(120, 90, 30, 0.16),
+    0 1px 1px rgba(8, 24, 16, 0.3),
+    0 calc(var(--sw) * 0.04) calc(var(--sw) * 0.09) rgba(8, 24, 16, 0.32);
+}
+
+.slip .crease-v {
+  left: 0;
+}
+
+.slip .crease-h {
+  top: 50%;
+}
+
+.pile {
+  position: relative;
+  width: var(--sw);
+  aspect-ratio: 3 / 4;
+}
+
+.pile .slip:nth-last-child(1) {
+  transform: rotate(1.5deg);
+}
+
+.pile .slip:nth-last-child(2) {
+  transform: translate(-5%, 3%) rotate(-5deg);
+}
+
+.pile .slip:nth-last-child(3) {
+  transform: translate(4%, 5%) rotate(6deg);
+}
+
+.pile .slip:nth-last-child(4) {
+  transform: translate(-3%, 8%) rotate(-9deg);
+}
+
+.pile .slip:nth-last-child(5) {
+  transform: translate(6%, 9%) rotate(11deg);
+}
+
+.pile-count {
+  position: absolute;
+  top: calc(100% + 1.6em);
+  left: 50%;
+  translate: -50% 0;
+  color: var(--stage-ink-2);
+  font-size: clamp(13px, calc(var(--sw) * 0.1), 30px);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@container (max-width: 480px) {
+  .pile-count-long {
+    display: none;
+  }
+}
+
+.rstage-pile {
+  position: absolute;
+  top: 50%;
+  left: calc((100cqw - var(--pw)) / 4);
+  translate: -50% -50%;
+  animation: pile-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.rface .pile,
+.rface .folded {
+  --sw: calc(var(--pw) * 0.58);
+}
+
+.folded {
+  position: relative;
+  width: var(--sw);
+  aspect-ratio: 3 / 4;
+}
+
+@keyframes pile-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------- 펼치기 ---------- */
+/* The submit scene's pieces, repositioned from its 300-unit stage onto the paper itself: the paper fills .unfold, the
+   strip is its lower half and the slip is the lower right quarter. The step rules that show and hide them live in fold.css. */
+.unfold {
+  position: absolute;
+  inset: 0;
+}
+
+.unfold-shadow {
+  position: absolute;
+  inset: 0;
+  filter: drop-shadow(0 calc(var(--pw) * 0.012) calc(var(--pw) * 0.03) rgba(8, 24, 16, 0.4))
+    drop-shadow(0 1px 1px rgba(8, 24, 16, 0.3));
+}
+
+.unfold-in {
+  position: absolute;
+  inset: 0;
+  perspective: calc(var(--pw) * 3.4);
+}
+
+.unfold .fold-paper {
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  perspective: calc(var(--pw) * 2.8);
+}
+
+.unfold .fold-strip {
+  top: 50%;
+  left: 0;
+  width: 100%;
+  height: 50%;
+}
+
+.unfold .fold-slip {
+  top: 50%;
+  left: 50%;
+  width: 50%;
+  height: 50%;
+}
+
+.unfold .fold-top {
+  height: calc(50% + 1px);
+}
+
+.unfold .fold-bot,
+.unfold .fold-strip-r,
+.unfold .fold-slip {
+  box-shadow: none;
+}
+
+.unfold .back-side {
+  box-shadow: inset 0 0 calc(var(--pw) * 0.06) rgba(120, 90, 30, 0.16);
+}
+
+.unfold-rest {
+  position: absolute;
+  inset: 0;
+}
+
+.unfold-rest .pface {
+  height: 100%;
+}
+
+.unfold[data-running='true'] .unfold-rest {
+  visibility: hidden;
+}
+
+/* ---------- 득표 그래프 ---------- */
+.graph {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: clamp(8px, 2.2cqw, 24px);
+  width: 100%;
+  color: var(--stage-ink);
+}
+
+.graph-row {
+  display: grid;
+  grid-template-columns: minmax(0, 24cqw) minmax(0, 1fr) minmax(2.4em, auto);
+  align-items: center;
+  gap: 2cqw;
+}
+
+.graph-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2em 0.6em;
+  font-family: var(--f-display);
+  font-size: max(16px, 2.7cqw);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.graph-lead {
+  padding: 0.1em 0.55em;
+  border-radius: 99px;
+  background: var(--stage-lead);
+  color: var(--stage-lead-ink);
+  font-family: var(--f-ui);
+  font-size: 0.55em;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.graph-track {
+  height: max(14px, 4cqw);
+  overflow: hidden;
+  border-radius: 0.5cqw;
+  background: var(--stage-track);
+}
+
+.graph-bar {
+  display: block;
+  width: var(--w);
+  height: 100%;
+  border-radius: 0.5cqw;
+  background: var(--stage-bar);
+  transform-origin: left;
+  animation: graph-grow 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.graph-row.lead .graph-bar {
+  background: var(--stage-lead);
+}
+
+.graph-count {
+  font-family: var(--f-display);
+  font-size: max(20px, 4cqw);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: right;
+}
+
+@keyframes graph-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@container (max-width: 520px) {
+  .graph-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 12px;
+  }
+
+  .graph-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .graph-label {
+    font-size: 17px;
+  }
+
+  .graph-count {
+    font-size: 24px;
+  }
+}
+
+/* ---------- 스위치 ---------- */
+.sw {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  text-align: left;
+}
+
+.sw-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sw-text b {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.sw-text small {
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 50px;
+  height: 30px;
+  border-radius: 99px;
+  background: var(--line);
+  transition: background 0.15s;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.sw[aria-checked='true'] .switch {
+  background: var(--brand);
+}
+
+.sw[aria-checked='true'] .switch::after {
+  transform: translateX(20px);
+}
+
+.sw:disabled {
+  opacity: 0.5;
+}
+
+/* ---------- 운영자 결과 화면 ---------- */
+.results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.results-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.results-head .title {
+  font-size: clamp(22px, 2.4vw, 30px);
+  overflow-wrap: anywhere;
+}
+
+.results-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.tag--alert {
+  border-color: var(--warn-line);
+  background: var(--accent);
+  color: var(--ink);
+}
+
+.results-stage {
+  aspect-ratio: 1 / 1.1;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+}
+
+.results-stage--graph {
+  display: flex;
+  align-items: center;
+  aspect-ratio: auto;
+  min-height: 280px;
+  padding: 20px 16px;
+  background: var(--stage);
+  cursor: default;
+}
+
+.results-stage .rstage {
+  border-radius: inherit;
+}
+
+.results-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.results-empty .title {
+  font-size: 26px;
+}
+
+.results-note {
+  min-height: 24px;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.results-author {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 44px;
+  padding: 6px 12px;
+  border-radius: var(--r);
+  background: var(--chip);
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.results-author b {
+  font-size: 16px;
+}
+
+.results-author span {
+  color: var(--ink-2);
+}
+
+.results-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.results-nav .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.results-nav .btn.icon {
+  flex: none;
+  width: 50px;
+  padding: 0;
+}
+
+.results-pos {
+  min-width: 4.6em;
+  font-family: var(--f-display);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.results-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.results-side .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.results-side .panel + .panel {
+  margin-top: 0;
+}
+
+.results-side .btn {
+  width: 100%;
+}
+
+.results:fullscreen {
+  height: 100%;
+  padding: 20px 24px;
+  background: var(--screen);
+}
+
+.results:fullscreen .results-stage {
+  flex: 1;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+
+.results-fs-note {
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+@media (min-width: 1024px) {
+  .host-main--results {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+
+  .results {
+    height: calc(100dvh - var(--appbar-h) - 64px);
+    min-height: 520px;
+  }
+
+  .results-stage {
+    flex: 1;
+    min-height: 0;
+    aspect-ratio: auto;
+  }
+
+  .results-stage--graph {
+    flex: none;
+    min-height: 0;
+    align-self: stretch;
+  }
+
+  .results-side {
+    position: sticky;
+    top: calc(var(--appbar-h) + 32px);
+  }
+}
+
+/* ---------- 대화면 열기 창 ---------- */
+.display-dialog {
+  width: min(92vw, 460px);
+  max-height: 92dvh;
+  padding: 22px;
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  overflow: auto;
+}
+
+.display-dialog::backdrop {
+  background: rgba(20, 33, 27, 0.55);
+}
+
+.display-dialog-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.display-dialog h2 {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.display-dialog .qr {
+  align-self: center;
+  width: min(100%, 220px);
+}
+
+.display-link-row {
+  display: flex;
+  gap: 8px;
+}
+
+.display-link-row .input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+}
+
+.display-dialog-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.display-dialog-actions .btn {
+  flex: 1;
+}
+
+.graph {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

@@ -5,12 +5,16 @@ export type Route =
   | { readonly name: 'home' }
   | { readonly name: 'participant'; readonly code: string }
   | { readonly name: 'host'; readonly code: string }
+  | { readonly name: 'display'; readonly code: string; readonly token: string }
   | { readonly name: 'not-found' };
 
 export function parseRoute(pathname: string): Route {
   const parts = pathname.split('/').filter(Boolean);
   if (parts.length === 0) return { name: 'home' };
-  const [head, code] = parts;
+  const [head, code, token] = parts;
+  if (parts.length === 3 && head === 'd' && code && token && ROOM_CODE_PATTERN.test(code)) {
+    return { name: 'display', code, token };
+  }
   if (parts.length === 2 && code && ROOM_CODE_PATTERN.test(code)) {
     if (head === 'r') return { name: 'participant', code };
     if (head === 'host') return { name: 'host', code };

@@ -22,6 +22,7 @@ const IDENTITY_REJECTED: ReadonlySet<ErrorReason> = new Set([
   'room_not_found',
   'bad_host_token',
   'bad_participant_token',
+  'bad_display_token',
 ]);
 
 const BACKOFF_START_MS = 500;

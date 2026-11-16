@@ -6,9 +6,11 @@ import { ConfirmDialog } from '../components/ConfirmDialog.tsx';
 import { AppBar, ConnectionBanner, Notice } from '../components/Frame.tsx';
 import { HostActions } from '../components/HostActions.tsx';
 import type { HostMode } from '../components/HostActions.tsx';
-import { ClosedCard, VotingCard } from '../components/HostVoteCards.tsx';
+import { DisplayDialog } from '../components/DisplayDialog.tsx';
+import { VotingCard } from '../components/HostVoteCards.tsx';
 import { Icon } from '../components/Icon.tsx';
 import { JoinCard } from '../components/JoinCard.tsx';
+import { ResultsView } from '../components/ResultsView.tsx';
 import { Roster } from '../components/Roster.tsx';
 import { emptyForm, parseForm } from '../composer.ts';
 import type { DraftForm } from '../composer.ts';
@@ -27,6 +29,14 @@ const refusalCopy = (refusal: Refusal): string => (refusal === 'offline' ? OFFLI
 const stageKeyOf = (host: HostView | null): string => {
   if (!host) return 'loading';
   return host.stage.kind === 'lobby' ? 'lobby' : `${host.stage.kind}:${host.stage.vote.id}`;
+};
+
+// Moving through the results settles nothing a command waits on, so a refusal clears the moment the reveal moves on.
+const settleKeyOf = (host: HostView | null): string => {
+  const base = stageKeyOf(host);
+  if (host?.stage.kind !== 'closed') return base;
+  const { cursor, mode, hidden } = host.stage.reveal;
+  return `${base}:${cursor}:${mode}:${hidden}`;
 };
 
 export function HostScreen({ code }: { code: string }) {
@@ -53,7 +63,8 @@ export function HostScreen({ code }: { code: string }) {
 
   const host = view?.role === 'host' ? view : null;
   const stageKey = stageKeyOf(host);
-  const command = useCommand(status === 'open', stageKey);
+  const command = useCommand(status === 'open', settleKeyOf(host));
+  const [displayOpen, setDisplayOpen] = useState(false);
   const [form, setForm] = useKeyedState<DraftForm | null>(stageKey, null);
   const [confirmingClose, setConfirmingClose] = useKeyedState(stageKey, false);
 
@@ -99,6 +110,7 @@ export function HostScreen({ code }: { code: string }) {
       onStart={startVote}
       onClose={() => (pending > 0 ? setConfirmingClose(true) : closeVote())}
       onDismiss={dismissVote}
+      onOpenDisplay={() => setDisplayOpen(true)}
     />
   ) : null;
 
@@ -111,7 +123,6 @@ export function HostScreen({ code }: { code: string }) {
   let primary: ReactNode = null;
   if (form) primary = <Composer form={form} onChange={setForm} />;
   else if (stage?.kind === 'voting') primary = <VotingCard vote={stage.vote} submitted={stage.submittedCount} total={total} />;
-  else if (stage?.kind === 'closed') primary = <ClosedCard vote={stage.vote} ballots={stage.ballotCount} />;
 
   return (
     <div className="app app--host">
@@ -130,7 +141,17 @@ export function HostScreen({ code }: { code: string }) {
           </div>
         ) : null}
       </div>
-      {host ? (
+      {host && stage?.kind === 'closed' ? (
+        <ResultsView
+          key={stage.vote.id}
+          stage={stage}
+          wide={wide}
+          online={status === 'open'}
+          send={send}
+          command={command}
+          refusal={refusal}
+        />
+      ) : host ? (
         <main className="host-main">
           <div className="host-col">
             <JoinCard code={code} folded={mode !== 'lobby'} />
@@ -166,6 +187,13 @@ export function HostScreen({ code }: { code: string }) {
           </div>
         </div>
       )}
+      {host ? (
+        <DisplayDialog
+          open={displayOpen}
+          url={`${location.origin}/d/${code}/${host.displayToken}`}
+          onClose={() => setDisplayOpen(false)}
+        />
+      ) : null}
       <ConfirmDialog
         open={confirmingClose}
         title={pending > 0 ? `아직 ${pending}명이 안 냈어요. 지금 마감할까요?` : '모두 제출했어요. 지금 마감할까요?'}

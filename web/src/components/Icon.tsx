@@ -40,6 +40,10 @@ const PATHS = {
       <path d="M7 7l1 13h8l1-13" />
     </>
   ),
+  left: <path d="M15 5l-7 7 7 7" />,
+  right: <path d="M9 5l7 7-7 7" />,
+  expand: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+  shrink: <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />,
   eyeoff: (
     <>
       <path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z" />

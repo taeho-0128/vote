@@ -20,6 +20,8 @@ export const ERROR_COPY: Record<ErrorReason, string> = {
   bad_vote: '투표 설정이 올바르지 않아요. 제목과 보기를 확인해 주세요.',
   bad_ballot: '용지 내용이 올바르지 않아요. 내용을 확인해 주세요.',
   already_submitted: '이미 제출한 용지가 있어요.',
+  bad_display_token: '대화면 주소가 올바르지 않아요. 운영자 화면의 "대화면 열기"에서 주소를 다시 받아 주세요.',
+  bad_reveal: '그 용지로는 넘길 수 없어요. 화면에 보이는 용지를 확인한 뒤 다시 눌러 주세요.',
 };
 
 // Not an ErrorReason: the command never left the browser.

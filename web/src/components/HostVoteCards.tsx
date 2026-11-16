@@ -1,9 +1,7 @@
 import type { VotePublic } from '../../../shared/protocol.ts';
+import { ANONYMITY_LABEL, PAPER_LABEL } from '../voteLabels.ts';
 
-const PAPER_LABEL = { freeform: '자유 기재', choice: '객관식' } as const;
-const ANONYMITY_LABEL = { anonymous: '익명', named: '기명' } as const;
-
-function Tags({ vote }: { vote: VotePublic }) {
+export function Tags({ vote }: { vote: VotePublic }) {
   return (
     <p className="tags">
       <span className="tag">{PAPER_LABEL[vote.paper.kind]}</span>
@@ -37,26 +35,6 @@ export function VotingCard({ vote, submitted, total }: VotingCardProps) {
       <div className="meter" aria-hidden="true">
         <i style={{ width: `${share}%` }} />
       </div>
-    </section>
-  );
-}
-
-export function ClosedCard({ vote, ballots }: { vote: VotePublic; ballots: number }) {
-  return (
-    <section className="vote-card panel" aria-labelledby="closed-card-title">
-      <p className="lbl">투표 마감</p>
-      <h1 id="closed-card-title" className="title">
-        마감했어요
-      </h1>
-      <p className="progress-line">
-        <b className="progress-count" data-testid="closed-count">
-          {ballots}
-        </b>
-        <span>장이 모였어요</span>
-      </p>
-      <p className="sub closed-title">{vote.title}</p>
-      <Tags vote={vote} />
-      <p className="hint">결과 보기는 다음 단계에서 열려요.</p>
     </section>
   );
 }
