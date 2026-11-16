@@ -1,10 +1,11 @@
 import { useId, useState } from 'react';
-import type { ReactNode } from 'react';
-import { TEXT_MAX } from '../../../shared/vote.ts';
-import { modeContent } from '../ballot.ts';
+import type { ChangeEvent, CSSProperties, KeyboardEvent, ReactNode } from 'react';
+import { TEXT_MAX, TEXT_MAX_LINES } from '../../../shared/vote.ts';
+import { limitTypedText, modeContent } from '../ballot.ts';
 import type { BallotDraft, BallotMode, FreeformDraft } from '../ballot.ts';
 import { clearAll, undo } from '../ink.ts';
 import type { InkDoc } from '../ink.ts';
+import { fitText, textFitStyle } from '../textFit.ts';
 import { InkCanvas } from './InkCanvas.tsx';
 import type { InkTool } from './InkCanvas.tsx';
 import { InkTools } from './InkTools.tsx';
@@ -35,6 +36,26 @@ export function FreeformPaper({ draft, signed, sign, onChange }: FreeformPaperPr
   const helpId = useId();
   const other: BallotMode = mode === 'write' ? 'type' : 'write';
   const showHint = modeContent(draft, mode) === null && modeContent(draft, other) !== null;
+
+  const typedStyle = textFitStyle(fitText(text, signed), signed) as CSSProperties;
+
+  // The cap is also enforced after the fact, so paste, drop and keyboards that send no Enter key are cut to it as well.
+  const type = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    const field = event.currentTarget;
+    const next = limitTypedText(field.value);
+    if (next !== field.value) {
+      const caret = Math.min(field.selectionStart, next.length);
+      requestAnimationFrame(() => field.setSelectionRange(caret, caret));
+    }
+    onChange({ ...draft, text: next });
+  };
+
+  const holdLineCap = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+    const { value, selectionStart, selectionEnd } = event.currentTarget;
+    const afterEnter = `${value.slice(0, selectionStart)}\n${value.slice(selectionEnd)}`;
+    if (afterEnter.split('\n').length > TEXT_MAX_LINES) event.preventDefault();
+  };
 
   const setInk = (next: InkDoc) => {
     setFull(false);
@@ -75,7 +96,9 @@ export function FreeformPaper({ draft, signed, sign, onChange }: FreeformPaperPr
               placeholder="여기에 적어 주세요"
               maxLength={TEXT_MAX}
               value={text}
-              onChange={(event) => onChange({ ...draft, text: event.target.value })}
+              style={typedStyle}
+              onChange={type}
+              onKeyDown={holdLineCap}
             />
           )}
           {sign}

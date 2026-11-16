@@ -29,6 +29,20 @@ export interface InkDoc {
 
 export const docFrom = (strokes: readonly InkStroke[]): InkDoc => ({ strokes, history: [] });
 
+// The writer's smoothing as SVG: quadratic curves through the midpoints, ending on the last point. A single point has
+// no path, so callers draw it as a dot of the pen's width.
+export function strokePath(pts: readonly number[]): string {
+  const n = pts.length / 2;
+  if (n < 2) return '';
+  let d = `M${pts[0]} ${pts[1]}`;
+  for (let i = 1; i < n - 1; i++) {
+    const x = pts[2 * i]!;
+    const y = pts[2 * i + 1]!;
+    d += `Q${x} ${y} ${(x + pts[2 * i + 2]!) / 2} ${(y + pts[2 * i + 3]!) / 2}`;
+  }
+  return `${d}L${pts[2 * n - 2]} ${pts[2 * n - 1]}`;
+}
+
 const clamp = (v: number, max: number) => Math.min(max, Math.max(0, Math.round(v)));
 
 function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {

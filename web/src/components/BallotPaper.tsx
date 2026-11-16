@@ -1,6 +1,7 @@
 import type { VotePublic } from '../../../shared/protocol.ts';
 import type { BallotDraft } from '../ballot.ts';
 import { FreeformPaper } from './FreeformPaper.tsx';
+import { RING_PATH } from './PaperFace.tsx';
 
 interface BallotPaperProps {
   vote: VotePublic;
@@ -9,11 +10,6 @@ interface BallotPaperProps {
   draft: BallotDraft;
   onChange: (draft: BallotDraft) => void;
 }
-
-// Hand-drawn loop from draft A, stretched to each option's box. Its length is normalized to 1, so the stylesheet's
-// dash offset of 1 hides it and 0 draws it. The gap is wider than the dash so no round cap is left at the end.
-const RING_PATH =
-  'M14 30C3 14 50 4 104 4C160 4 198 12 194 28C190 46 140 50 100 50C48 50 8 46 6 28C5 16 30 8 62 6';
 
 export function BallotPaper({ vote, signature, draft, onChange }: BallotPaperProps) {
   const { paper } = vote;

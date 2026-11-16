@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { INK_MAX_STROKES } from '../../shared/ink.ts';
 import type { InkStroke } from '../../shared/ink.ts';
+import { TEXT_MAX, TEXT_MAX_LINES } from '../../shared/vote.ts';
 import type { Paper } from '../../shared/vote.ts';
-import { draftContent, emptyDraft, modeContent, restoreDraft, storableDraft, storedDraftSchema } from './ballot.ts';
+import { draftContent, emptyDraft, limitTypedText, modeContent, restoreDraft, storableDraft, storedDraftSchema } from './ballot.ts';
 import type { BallotDraft } from './ballot.ts';
 import { addStroke, docFrom } from './ink.ts';
 
@@ -100,5 +101,43 @@ describe('what a submit sends', () => {
   it('has nothing to send from an empty or unpicked choice paper', () => {
     expect(draftContent({ kind: 'choice', optionIndex: null }, CHOICE)).toBeNull();
     expect(draftContent({ kind: 'choice', optionIndex: 1 }, CHOICE)).toEqual({ kind: 'choice', optionIndex: 1 });
+  });
+});
+
+
+describe('what a typing paper holds', () => {
+  const lines = (count: number, line: string) => Array.from({ length: count }, () => line).join('\n');
+
+  it('leaves text inside the caps alone', () => {
+    const text = lines(TEXT_MAX_LINES, '가나다');
+    expect(limitTypedText(text)).toBe(text);
+    expect(limitTypedText('')).toBe('');
+  });
+
+  it('cuts pasted lines past the cap', () => {
+    expect(limitTypedText(lines(13, '가나다'))).toBe(lines(TEXT_MAX_LINES, '가나다'));
+    expect(limitTypedText(lines(40, '가'))).toBe(lines(TEXT_MAX_LINES, '가'));
+  });
+
+  it('cuts pasted characters past the cap and counts a line break as a character', () => {
+    expect([...limitTypedText('가'.repeat(250))]).toHaveLength(TEXT_MAX);
+    expect([...limitTypedText(lines(12, '가'.repeat(30)))]).toHaveLength(TEXT_MAX);
+    expect(limitTypedText('😀'.repeat(250))).toBe('😀'.repeat(TEXT_MAX));
+  });
+
+  it('returns text the server accepts, so a submit is never refused for length', () => {
+    for (const raw of [lines(13, '가'.repeat(30)), '가'.repeat(250), `${lines(12, '가')}\n나`]) {
+      const content = draftContent(freeform({ mode: 'type', text: limitTypedText(raw) }), FREEFORM);
+      expect(content).not.toBeNull();
+    }
+  });
+
+  it('turns a tab into a space, since its width cannot be counted', () => {
+    expect(limitTypedText('가\t나')).toBe('가 나');
+  });
+
+  it('cuts a draft stored before the line cap when it is restored', () => {
+    const stored = parse({ kind: 'freeform', mode: 'type', text: lines(15, '가'), strokes: [] });
+    expect(restoreDraft(stored, FREEFORM)).toMatchObject({ text: lines(TEXT_MAX_LINES, '가') });
   });
 });

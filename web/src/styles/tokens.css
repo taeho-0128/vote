@@ -32,11 +32,24 @@
   --tool-on: #1b5e47;
   --tool-on-ink: #fff;
   --warn-bg: #fff6cf;
+  --warn-line: #d9aa00;
+  --warn-ink: #7a5b00;
+
+  --glyph-alert: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5.5M12 16.5v.01'/%3E%3C/svg%3E");
+  --glyph-warn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 4L3 19.5h18z'/%3E%3Cpath d='M12 10v4.5M12 17.2v.01'/%3E%3C/svg%3E");
 
   --paper: #f8f2e2;
   --paper-line: rgba(60, 90, 130, 0.26);
   --paper-ink: #1d2330;
   --paper-shadow: 0 1px 1px rgba(40, 30, 10, 0.2), 0 8px 18px rgba(40, 30, 10, 0.18);
+  --paper-back: #efe7d1;
+
+  --box-body: #aab5b0;
+  --box-body-2: #869590;
+  --box-lid: #c5cec9;
+  --box-slot: #18211d;
+  --box-label: #1b5e47;
+  --box-label-ink: #fff;
 
   --caret: #1b5e47;
   --sel: #f5c518;

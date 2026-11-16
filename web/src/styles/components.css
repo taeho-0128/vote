@@ -115,6 +115,10 @@
   background: none;
 }
 
+.banner--error .form-error::before {
+  margin-top: 3px;
+}
+
 .banner-in {
   max-width: var(--col);
   margin: 0 auto;
@@ -171,13 +175,29 @@
 }
 
 .form-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   padding: 10px 12px;
-  border-left: 4px solid var(--danger);
-  border-radius: 0 var(--r) var(--r) 0;
+  border: 1px solid var(--danger);
+  border-radius: var(--r);
   background: var(--danger-bg);
   color: var(--danger);
   font-size: 15px;
   font-weight: 700;
+  word-break: keep-all;
+  text-wrap: pretty;
+}
+
+.form-error::before {
+  content: '';
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  background: currentColor;
+  -webkit-mask: var(--glyph-alert) center / contain no-repeat;
+  mask: var(--glyph-alert) center / contain no-repeat;
 }
 
 .notice {

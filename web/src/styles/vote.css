@@ -329,13 +329,17 @@
   color: var(--paper-ink);
 }
 
-.sheet {
-  --ls: 11.5cqw;
+.sheet,
+.sheet textarea {
   --ruled: repeating-linear-gradient(
     to bottom,
     transparent 0 calc(var(--ls) - 1px),
     var(--paper-line) calc(var(--ls) - 1px) var(--ls)
   );
+}
+
+.sheet {
+  --ls: 11.5cqw;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -346,27 +350,28 @@
   line-height: var(--ls);
 }
 
+/* textFit.ts sets --ls, --tf-top, --tf-pad, the font size and the line height on the element, so the lines the text
+   sits on follow the size it was given. */
 .sheet textarea {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  padding: calc(var(--ls) * 0.45) 5cqw;
+  padding: var(--tf-pad);
   resize: none;
   border: 0;
-  background: var(--ruled) local 0 calc(var(--ls) * 0.45);
+  background: var(--ruled) local 0 var(--tf-top);
   color: inherit;
   caret-color: var(--paper-ink);
   font: inherit;
   outline-offset: -3px;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  word-break: normal;
 }
 
 .sheet textarea::placeholder {
   color: #5d616d;
-}
-
-.sheet.signed textarea {
-  padding-bottom: calc(var(--ls) * 1.9);
 }
 
 .sig {
@@ -532,14 +537,29 @@
 }
 
 .ink-full {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   padding: 10px 12px;
-  border-left: 4px solid var(--accent);
-  border-radius: 0 var(--r) var(--r) 0;
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r);
   background: var(--warn-bg);
+  color: var(--ink);
   font-size: 15px;
   font-weight: 700;
   word-break: keep-all;
   text-wrap: balance;
+}
+
+.ink-full::before {
+  content: '';
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  background: var(--warn-ink);
+  -webkit-mask: var(--glyph-warn) center / contain no-repeat;
+  mask: var(--glyph-warn) center / contain no-repeat;
 }
 
 .mode-hint {

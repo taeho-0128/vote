@@ -13,6 +13,7 @@ import {
   fitInk,
   sampleSegment,
   simplify,
+  strokePath,
   undo,
 } from './ink.ts';
 import type { InkDoc, Pt } from './ink.ts';
@@ -210,5 +211,16 @@ describe('limits', () => {
     doc = addStroke(doc, 'thick', [1500, 1500, 20, 20])!;
     const strokes = fitInk(doc.strokes)!;
     expect(normalizeBallotContent({ kind: 'ink', strokes }, FREEFORM)).toEqual({ kind: 'ink', strokes });
+  });
+});
+
+describe('strokePath', () => {
+  it('draws two points as a straight line and a single point as nothing', () => {
+    expect(strokePath([10, 20, 30, 40])).toBe('M10 20L30 40');
+    expect(strokePath([10, 20])).toBe('');
+  });
+
+  it('curves through the midpoints like the canvas writer and ends on the last point', () => {
+    expect(strokePath([0, 0, 100, 0, 100, 100, 200, 100])).toBe('M0 0Q100 0 100 50Q100 100 150 100L200 100');
   });
 });

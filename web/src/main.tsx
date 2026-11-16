@@ -5,6 +5,7 @@ import './styles/tokens.css';
 import './styles/base.css';
 import './styles/components.css';
 import './styles/vote.css';
+import './styles/fold.css';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root is missing from index.html');

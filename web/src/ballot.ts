@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { inkSchema } from '../../shared/ink.ts';
-import { normalizeBallotContent, OPTIONS_MAX, TEXT_MAX } from '../../shared/vote.ts';
+import { normalizeBallotContent, OPTIONS_MAX, TEXT_MAX, TEXT_MAX_LINES } from '../../shared/vote.ts';
 import type { BallotContent, Paper } from '../../shared/vote.ts';
 import { docFrom, fitInk, normalizeStroke } from './ink.ts';
 import type { InkDoc } from './ink.ts';
@@ -38,6 +38,13 @@ export type FreeformDraft = Extract<BallotDraft, { kind: 'freeform' }>;
 
 const FREEFORM: Paper = { kind: 'freeform' };
 
+// What a typing paper holds: at most TEXT_MAX_LINES lines and TEXT_MAX characters. Anything longer, pasted or restored
+// from a draft, is cut there, lines first. A tab becomes a space because a tab's width is not one the fit can count.
+export function limitTypedText(text: string): string {
+  const lines = text.replace(/\t/g, ' ').split('\n').slice(0, TEXT_MAX_LINES).join('\n');
+  return [...lines].slice(0, TEXT_MAX).join('');
+}
+
 export const emptyDraft = (paper: Paper): BallotDraft =>
   paper.kind === 'freeform'
     ? { kind: 'freeform', mode: 'write', text: '', ink: docFrom([]) }
@@ -56,7 +63,7 @@ export function restoreDraft(stored: StoredDraft | null, paper: Paper): BallotDr
     if (stored.kind !== 'freeform') return emptyDraft(paper);
     const clean = stored.strokes.map(normalizeStroke);
     const strokes = fitInk(clean) === null ? [] : clean;
-    return { kind: 'freeform', mode: stored.mode, text: stored.text, ink: docFrom(strokes) };
+    return { kind: 'freeform', mode: stored.mode, text: limitTypedText(stored.text), ink: docFrom(strokes) };
   }
   if (stored.kind !== 'choice') return emptyDraft(paper);
   const { optionIndex } = stored;
