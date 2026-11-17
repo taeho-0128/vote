@@ -366,6 +366,7 @@
   font: inherit;
   outline-offset: -3px;
   overflow-wrap: break-word;
+  text-align: center;
   white-space: pre-wrap;
   word-break: normal;
 }

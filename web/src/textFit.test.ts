@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TEXT_MAX, TEXT_MAX_LINES } from '../../shared/vote.ts';
-import { fitText, rowsAvailable, rowsNeeded, TEXT_STEPS, textFitStyle } from './textFit.ts';
+import { fitText, leadOf, rowsAvailable, rowsNeeded, TEXT_STEPS, textFitStyle } from './textFit.ts';
 
 const LARGEST = TEXT_STEPS[0]!;
 const SMALLEST = TEXT_STEPS[TEXT_STEPS.length - 1]!;
@@ -180,15 +180,145 @@ describe('the worst texts the contract accepts', () => {
 
 describe('the styles that put a fit on the paper', () => {
   it('writes every length as a share of the paper width', () => {
-    const style = textFitStyle({ size: 0.1058, pitch: 0.115 }, false);
+    const style = textFitStyle({ size: 0.1058, pitch: 0.115, lead: 0 }, false);
     expect(style['--ls']).toBe('11.5cqw');
     expect(style.fontSize).toBe('10.58cqw');
     expect(style.lineHeight).toBe('11.5cqw');
   });
 
   it('keeps the same margin above and below an unsigned paper and clears the signature on a signed one', () => {
-    const fit = { size: 0.1, pitch: 0.1 };
+    const fit = { size: 0.1, pitch: 0.1, lead: 0 };
     expect(textFitStyle(fit, false)['--tf-pad']).toBe('4.5cqw 5cqw 4.5cqw');
     expect(textFitStyle(fit, true)['--tf-pad']).toBe('4.5cqw 5cqw 17cqw');
+  });
+
+  it('adds the lead rows to the top padding and leaves the ruled lines where they were', () => {
+    const fit = { size: 0.1, pitch: 0.1, lead: 3 };
+    expect(textFitStyle(fit, false)['--tf-pad']).toBe('34.5cqw 5cqw 4.5cqw');
+    expect(textFitStyle(fit, true)['--tf-pad']).toBe('34.5cqw 5cqw 17cqw');
+    expect(textFitStyle(fit, false)['--tf-top']).toBe('4.5cqw');
+  });
+});
+
+describe('where the text block sits (D-42)', () => {
+  const cases: Record<string, string> = {
+    'an empty paper': '',
+    'one short line': '서연이요!',
+    'a few lines': '서연이요!\n발표 자료 같이 만들어 줘서\n정말 고마웠어요',
+    'the 200-character paragraph': [...SENTENCE.repeat(3)].slice(0, TEXT_MAX).join(''),
+    'the 12-line worst case': lines(TEXT_MAX_LINES, '가나다라마바사아자차카타파하서'),
+    '12 single-character lines': lines(TEXT_MAX_LINES, '가'),
+    '200 of the widest syllable': widest(TEXT_MAX),
+    '200 emoji': '😀'.repeat(TEXT_MAX),
+  };
+
+  for (const [name, text] of Object.entries(cases)) {
+    for (const signed of [false, true]) {
+      it(`leaves a whole, non-negative number of rows above ${name}, ${signed ? 'signed' : 'unsigned'}, and keeps the last row on the paper`, () => {
+        const { pitch, lead } = fitText(text, signed);
+        const available = rowsAvailable(pitch, signed);
+        const rows = rowsNeeded(text, pitch);
+        expect(Number.isInteger(lead)).toBe(true);
+        expect(lead).toBeGreaterThanOrEqual(0);
+        expect(lead + rows).toBeLessThanOrEqual(available);
+        expect(lead).toBe(Math.max(0, Math.floor((available - rows) / 2)));
+      });
+    }
+  }
+
+  it('treats an empty paper as one row, so the placeholder sits in the middle too', () => {
+    for (const signed of [false, true]) {
+      const { pitch, lead } = fitText('', signed);
+      expect(rowsNeeded('', pitch)).toBe(1);
+      expect(lead).toBe(Math.floor((rowsAvailable(pitch, signed) - 1) / 2));
+      expect(lead).toBeGreaterThan(0);
+      expect(fitText('서연이요!', signed).lead).toBe(lead);
+    }
+  });
+
+  it('puts the large friendly size at the known middle of an unsigned and a signed paper', () => {
+    expect(rowsAvailable(LARGEST, false)).toBe(10);
+    expect(fitText('서연이요!', false).lead).toBe(4);
+    expect(rowsAvailable(LARGEST, true)).toBe(9);
+    expect(fitText('서연이요!', true).lead).toBe(4);
+    expect(fitText('서연이요!\n둘째 줄\n셋째 줄', false).lead).toBe(3);
+    expect(fitText('서연이요!\n둘째 줄\n셋째 줄', true).lead).toBe(3);
+  });
+
+  it('leaves no lead at the largest row count a step holds', () => {
+    for (const signed of [false, true]) {
+      const full = lines(TEXT_MAX_LINES, '가');
+      const { pitch, lead } = fitText(full, signed);
+      expect(rowsNeeded(full, pitch)).toBe(TEXT_MAX_LINES);
+      expect(rowsAvailable(pitch, signed)).toBe(TEXT_MAX_LINES);
+      expect(lead).toBe(0);
+    }
+  });
+
+  it('gives a signed paper no more lead than the same text unsigned at the same size', () => {
+    const text = '서연이요!';
+    expect(fitText(text, true).lead).toBeLessThanOrEqual(fitText(text, false).lead);
+  });
+
+  it('moves the block down one row at a time, never jumping, while a step holds', () => {
+    for (const signed of [false, true]) {
+      let previous: { pitch: number; lead: number } | null = null;
+      for (let n = 1; n <= TEXT_MAX_LINES; n++) {
+        const { pitch, lead } = fitText(lines(n, '가'), signed);
+        if (previous && previous.pitch === pitch) {
+          expect(lead).toBeLessThanOrEqual(previous.lead);
+          expect(previous.lead - lead).toBeLessThanOrEqual(1);
+        }
+        previous = { pitch, lead };
+      }
+    }
+  });
+
+  it('gives the lead of any row count the browser may draw, whole and never off the paper', () => {
+    for (const pitch of TEXT_STEPS) {
+      for (const signed of [false, true]) {
+        const available = rowsAvailable(pitch, signed);
+        for (let rows = 1; rows <= available + 3; rows++) {
+          const lead = leadOf(rows, pitch, signed);
+          expect(Number.isInteger(lead)).toBe(true);
+          expect(lead).toBeGreaterThanOrEqual(0);
+          if (rows <= available) expect(lead + rows).toBeLessThanOrEqual(available);
+          else expect(lead).toBe(0);
+        }
+      }
+    }
+  });
+
+  it('puts fewer measured rows no higher than the estimate would, and the same count at the same place', () => {
+    for (const text of [hangul(60), hangul(200), lines(3, '가나다'), '서연이요!']) {
+      for (const signed of [false, true]) {
+        const { pitch, lead } = fitText(text, signed);
+        const modeled = rowsNeeded(text, pitch);
+        expect(leadOf(modeled, pitch, signed)).toBe(lead);
+        for (let drawn = 1; drawn <= modeled; drawn++) expect(leadOf(drawn, pitch, signed)).toBeGreaterThanOrEqual(lead);
+        expect(leadOf(1, pitch, signed)).toBeGreaterThanOrEqual(leadOf(modeled, pitch, signed));
+      }
+    }
+  });
+
+  it('moves down one row for every two fewer rows drawn', () => {
+    const pitch = LARGEST;
+    expect(leadOf(1, pitch, false)).toBe(4);
+    expect(leadOf(3, pitch, false)).toBe(3);
+    expect(leadOf(5, pitch, false)).toBe(2);
+    expect(leadOf(10, pitch, false)).toBe(0);
+  });
+
+  it('never lets the lead and the rows overflow for random accepted text', () => {
+    const next = random(2024);
+    const alphabet = ['가', '나', '다', '라', 'a', 'b', ' ', ' ', '\n', '1', '😀'];
+    for (let run = 0; run < 1500; run++) {
+      const text = Array.from({ length: next(TEXT_MAX + 1) }, () => alphabet[next(alphabet.length)]!).join('');
+      if (!accepted(text)) continue;
+      const signed = run % 2 === 0;
+      const { pitch, lead } = fitText(text, signed);
+      expect(lead).toBeGreaterThanOrEqual(0);
+      expect(lead + rowsNeeded(text, pitch)).toBeLessThanOrEqual(rowsAvailable(pitch, signed));
+    }
   });
 });

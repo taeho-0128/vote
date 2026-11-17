@@ -1,4 +1,4 @@
-// How big typed text may be on the paper (D-36). The writing textarea, the folding face and the results paper all call
+// How big typed text may be on the paper (D-36) and how far down it sits (D-42). The writing textarea, the folding face and the results paper all call
 // `fitText`, so nobody else decides a text size. Every length is a fraction of the paper's width, which is what makes the
 // answer the same on a 250px phone and a 420px laptop: the caller turns a fraction into `cqw` inside the paper.
 
@@ -52,6 +52,8 @@ export interface TextFit {
   // Font size and line pitch, as fractions of the paper's width.
   readonly size: number;
   readonly pitch: number;
+  // Whole ruled rows to leave above the text so the block sits in the middle of the room the paper has for it (D-42).
+  readonly lead: number;
 }
 
 const isWide = (code: number) => code >= 0x80;
@@ -127,23 +129,31 @@ export function rowsAvailable(pitch: number, signed: boolean): number {
   return Math.floor((PAPER_HEIGHT - top - bottom) / pitch - SPARE_ROWS);
 }
 
+// Whole rows to leave above `rows` rows of text so the block sits in the middle of the room the paper has.
+export function leadOf(rows: number, pitch: number, signed: boolean): number {
+  return Math.max(0, Math.floor((rowsAvailable(pitch, signed) - rows) / 2));
+}
+
+// The size is picked from the conservative estimate, so it never lets text overflow. The lead here comes from the same
+// estimate, which is the answer until the browser has laid the text out and `useFittedStyle` can count the real rows.
 export function fitText(text: string, signed: boolean): TextFit {
   const pitch =
     TEXT_STEPS.find((candidate) => rowsNeeded(text, candidate) <= rowsAvailable(candidate, signed)) ?? TEXT_STEPS[TEXT_STEPS.length - 1]!;
-  return { size: pitch * SIZE_RATIO, pitch };
+  return { size: pitch * SIZE_RATIO, pitch, lead: leadOf(rowsNeeded(text, pitch), pitch, signed) };
 }
 
 const cqw = (fraction: number) => `${Number((fraction * 100).toFixed(3))}cqw`;
 
 // The styles that put a fit on the paper: the sheet's `--ls` follows the pitch so its ruled lines do too, and the
-// padding keeps the text clear of the margins and the signature.
-export function textFitStyle({ size, pitch }: TextFit, signed: boolean): Record<string, string> {
+// padding keeps the text clear of the margins and the signature. The `lead` rows are added to the top padding only, so
+// the ruled lines (`--tf-top`) stay where they are and the text moves down them.
+export function textFitStyle({ size, pitch, lead }: TextFit, signed: boolean): Record<string, string> {
   const top = pitch * TOP_RATIO;
   const bottom = signed ? SIGN_RESERVE : top;
   return {
     '--ls': cqw(pitch),
     '--tf-top': cqw(top),
-    '--tf-pad': `${cqw(top)} ${cqw(PAD_X)} ${cqw(bottom)}`,
+    '--tf-pad': `${cqw(top + lead * pitch)} ${cqw(PAD_X)} ${cqw(bottom)}`,
     fontSize: cqw(size),
     lineHeight: cqw(pitch),
   };

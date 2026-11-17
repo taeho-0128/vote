@@ -1,9 +1,8 @@
-import { memo } from 'react';
-import type { CSSProperties } from 'react';
+import { memo, useRef } from 'react';
 import { INK_HEIGHT, INK_WIDTH } from '../../../shared/ink.ts';
 import type { BallotContent, Paper } from '../../../shared/vote.ts';
 import { PEN_WIDTH, strokePath } from '../ink.ts';
-import { fitText, textFitStyle } from '../textFit.ts';
+import { useFittedStyle } from '../useFittedStyle.ts';
 
 // Hand-drawn loop from draft A, stretched to each option's box. Its length is normalized to 1, so a dash offset of 1
 // hides it and 0 draws it. The gap is wider than the dash so no round cap is left at the end.
@@ -50,25 +49,49 @@ function Options({ options, chosen }: { options: readonly string[]; chosen: numb
   );
 }
 
+function Signature({ signature, signatureId }: { signature: string; signatureId?: string }) {
+  return (
+    <span className="pface-sig" data-testid={signatureId}>
+      — {signature}
+    </span>
+  );
+}
+
+// A typed paper. It is its own component so the count of drawn rows, which sets how far down the text sits, belongs to
+// the paper that shows the text.
+function TypedSheet({ text, signature, signatureId }: { text: string; signature: string | null; signatureId?: string }) {
+  const signed = signature !== null;
+  const block = useRef<HTMLParagraphElement>(null);
+  const style = useFittedStyle(block, text, signed);
+  return (
+    <div className={signed ? 'pface-sheet signed' : 'pface-sheet'} style={style}>
+      <p className="pface-text" ref={block}>
+        {text}
+      </p>
+      {signed ? <Signature signature={signature} signatureId={signatureId} /> : null}
+    </div>
+  );
+}
+
 // What a ballot says, on the same 3:4 ruled paper the participant wrote it on. It fills the width of its parent and
 // sizes everything from that width, so the stage, the results and a projector all use it unchanged.
 // Memoized because the host's view arrives again on every reveal command, and an unchanged paper must not redraw its strokes.
 export const PaperFace = memo(function PaperFace({ content, paper, signature, signatureId }: PaperFaceProps) {
-  const signed = signature !== null;
-  const typed = content.kind === 'text' ? (textFitStyle(fitText(content.text, signed), signed) as CSSProperties) : undefined;
+  if (content.kind === 'text') {
+    return (
+      <div className="pface">
+        <TypedSheet text={content.text} signature={signature} signatureId={signatureId} />
+      </div>
+    );
+  }
   return (
     <div className="pface">
-      <div className={signed ? 'pface-sheet signed' : 'pface-sheet'} style={typed}>
+      <div className={signature === null ? 'pface-sheet' : 'pface-sheet signed'}>
         {content.kind === 'ink' ? <Ink strokes={content.strokes} /> : null}
-        {content.kind === 'text' ? <p className="pface-text">{content.text}</p> : null}
         {content.kind === 'choice' && paper.kind === 'choice' ? (
           <Options options={paper.options} chosen={content.optionIndex} />
         ) : null}
-        {signature === null ? null : (
-          <span className="pface-sig" data-testid={signatureId}>
-            — {signature}
-          </span>
-        )}
+        {signature === null ? null : <Signature signature={signature} signatureId={signatureId} />}
       </div>
     </div>
   );

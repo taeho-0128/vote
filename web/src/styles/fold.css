@@ -51,6 +51,7 @@
   padding: var(--tf-pad);
   overflow: hidden;
   overflow-wrap: break-word;
+  text-align: center;
   white-space: pre-wrap;
   word-break: normal;
 }

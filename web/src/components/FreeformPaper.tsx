@@ -1,11 +1,11 @@
-import { useId, useState } from 'react';
-import type { ChangeEvent, CSSProperties, KeyboardEvent, ReactNode } from 'react';
+import { useId, useRef, useState } from 'react';
+import type { ChangeEvent, KeyboardEvent, ReactNode } from 'react';
 import { TEXT_MAX, TEXT_MAX_LINES } from '../../../shared/vote.ts';
 import { limitTypedText, modeContent } from '../ballot.ts';
 import type { BallotDraft, BallotMode, FreeformDraft } from '../ballot.ts';
 import { clearAll, undo } from '../ink.ts';
 import type { InkDoc } from '../ink.ts';
-import { fitText, textFitStyle } from '../textFit.ts';
+import { useFittedStyle } from '../useFittedStyle.ts';
 import { InkCanvas } from './InkCanvas.tsx';
 import type { InkTool } from './InkCanvas.tsx';
 import { InkTools } from './InkTools.tsx';
@@ -18,6 +18,8 @@ interface FreeformPaperProps {
   onChange: (draft: BallotDraft) => void;
 }
 
+const PLACEHOLDER = '여기에 적어 주세요';
+
 const MODES: { mode: BallotMode; testId: string; label: string }[] = [
   { mode: 'write', testId: 'mode-write', label: '쓰기' },
   { mode: 'type', testId: 'mode-type', label: '타이핑' },
@@ -29,25 +31,26 @@ const OTHER_MODE_HINT: Record<BallotMode, string> = {
   type: '손으로 쓴 내용은 쓰기 모드에서 낼 수 있어요.',
 };
 
-export function FreeformPaper({ draft, signed, sign, onChange }: FreeformPaperProps) {
-  const { mode, text, ink } = draft;
-  const [tool, setTool] = useState<InkTool>('thin');
-  const [full, setFull] = useState(false);
-  const helpId = useId();
-  const other: BallotMode = mode === 'write' ? 'type' : 'write';
-  const showHint = modeContent(draft, mode) === null && modeContent(draft, other) !== null;
+interface TypedFieldProps {
+  text: string;
+  signed: boolean;
+  onText: (text: string) => void;
+}
 
-  const typedStyle = textFitStyle(fitText(text, signed), signed) as CSSProperties;
+// Its own component so the measuring hook starts when the field appears and stops when the participant switches to writing.
+function TypedField({ text, signed, onText }: TypedFieldProps) {
+  const field = useRef<HTMLTextAreaElement>(null);
+  const style = useFittedStyle(field, text, signed, text === '' ? PLACEHOLDER : text);
 
   // The cap is also enforced after the fact, so paste, drop and keyboards that send no Enter key are cut to it as well.
   const type = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    const field = event.currentTarget;
-    const next = limitTypedText(field.value);
-    if (next !== field.value) {
-      const caret = Math.min(field.selectionStart, next.length);
-      requestAnimationFrame(() => field.setSelectionRange(caret, caret));
+    const el = event.currentTarget;
+    const next = limitTypedText(el.value);
+    if (next !== el.value) {
+      const caret = Math.min(el.selectionStart, next.length);
+      requestAnimationFrame(() => el.setSelectionRange(caret, caret));
     }
-    onChange({ ...draft, text: next });
+    onText(next);
   };
 
   const holdLineCap = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -56,6 +59,29 @@ export function FreeformPaper({ draft, signed, sign, onChange }: FreeformPaperPr
     const afterEnter = `${value.slice(0, selectionStart)}\n${value.slice(selectionEnd)}`;
     if (afterEnter.split('\n').length > TEXT_MAX_LINES) event.preventDefault();
   };
+
+  return (
+    <textarea
+      data-testid="ballot-text"
+      aria-label="타이핑 용지"
+      ref={field}
+      placeholder={PLACEHOLDER}
+      maxLength={TEXT_MAX}
+      value={text}
+      style={style}
+      onChange={type}
+      onKeyDown={holdLineCap}
+    />
+  );
+}
+
+export function FreeformPaper({ draft, signed, sign, onChange }: FreeformPaperProps) {
+  const { mode, text, ink } = draft;
+  const [tool, setTool] = useState<InkTool>('thin');
+  const [full, setFull] = useState(false);
+  const helpId = useId();
+  const other: BallotMode = mode === 'write' ? 'type' : 'write';
+  const showHint = modeContent(draft, mode) === null && modeContent(draft, other) !== null;
 
   const setInk = (next: InkDoc) => {
     setFull(false);
@@ -90,16 +116,7 @@ export function FreeformPaper({ draft, signed, sign, onChange }: FreeformPaperPr
           {mode === 'write' ? (
             <InkCanvas doc={ink} tool={tool} describedBy={helpId} onDoc={setInk} onFull={() => setFull(true)} />
           ) : (
-            <textarea
-              data-testid="ballot-text"
-              aria-label="타이핑 용지"
-              placeholder="여기에 적어 주세요"
-              maxLength={TEXT_MAX}
-              value={text}
-              style={typedStyle}
-              onChange={type}
-              onKeyDown={holdLineCap}
-            />
+            <TypedField text={text} signed={signed} onText={(next) => onChange({ ...draft, text: next })} />
           )}
           {sign}
         </div>
